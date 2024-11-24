@@ -17,6 +17,7 @@ import ContactDetail from "@/components/ContactDetail";
 import Pagination from "@/components/Pagination";
 import { calculateVelocityScore } from '@/utils/velocityTracking';
 import ColumnCustomizer from "@/components/ColumnCustomizer";
+import ExportButton from '@/components/ExportButton';
 
 // interface Contact {
 //   name: string;
@@ -418,9 +419,11 @@ export default function ContactsPage() {
             <p className="text-gray-600 mt-1">Manage and grow your professional relationships</p>
           </div>
           
-          {/* Search Bar */}
-          <div className="relative w-full max-w-md">
-            <SearchInput value={search} onChange={setSearch} />
+          <div className="flex items-center gap-4">
+            <div className="relative w-full max-w-md">
+              <SearchInput value={search} onChange={setSearch} />
+            </div>
+            <ExportButton contacts={contacts} />
           </div>
         </div>
 
