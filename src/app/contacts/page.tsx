@@ -151,6 +151,7 @@ export default function ContactsPage() {
     return sortedContacts.filter(contact => {
       const matchesSearch = 
         contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contact.email.toLowerCase() === searchTerm.toLowerCase() ||
         contact.email.toLowerCase().includes(searchTerm.toLowerCase());
       
       if (!matchesSearch) return false;
