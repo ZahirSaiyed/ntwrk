@@ -4,8 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { Contact } from '@/types';
 
 export async function PUT(
-  request: Request,
-  { params }: { params: { email: string } }
+  request: Request
 ): Promise<Response> {
   const session = await getServerSession(authOptions);
   
