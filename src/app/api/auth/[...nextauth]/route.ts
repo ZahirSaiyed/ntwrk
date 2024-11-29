@@ -36,6 +36,11 @@ export const authOptions = {
       session.accessToken = token.accessToken;
       return session;
     },
+    async redirect({ url, baseUrl }: { url: string, baseUrl: string }) {
+      if (url.startsWith(baseUrl)) return url;
+      else if (url.startsWith('/')) return `${baseUrl}${url}`;
+      return '/overview';
+    },
   },
   pages: {
     signIn: '/auth',

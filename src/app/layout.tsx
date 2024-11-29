@@ -7,7 +7,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'Modern Network - Connect, Collaborate, Create',
+  title: 'Node - Connect, Collaborate, Create',
   description: 'A next-generation platform for professional networking and collaboration',
 };
 
@@ -20,9 +20,11 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body>
         <Providers session={session}>
-          {children}
+          <div className="min-h-screen bg-[#FAFAFA]">
+            {children}
+          </div>
         </Providers>
       </body>
     </html>

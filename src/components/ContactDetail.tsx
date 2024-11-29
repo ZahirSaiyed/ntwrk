@@ -1,5 +1,5 @@
 import { Contact } from '@/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface CustomField {
   id: string;
@@ -14,10 +14,21 @@ interface Props {
 }
 
 export default function ContactDetail({ contact, onClose, onSave }: Props) {
-  const [editedContact, setEditedContact] = useState<Contact>(contact);
+  const [editedContact, setEditedContact] = useState<Contact>({
+    ...contact,
+    customFields: contact.customFields || []
+  });
   const [customFields, setCustomFields] = useState<CustomField[]>(
     contact.customFields || []
   );
+
+  useEffect(() => {
+    setEditedContact({
+      ...contact,
+      customFields: contact.customFields || []
+    });
+    setCustomFields(contact.customFields || []);
+  }, [contact]);
 
   const handleInputChange = (field: keyof Contact, value: string) => {
     setEditedContact(prev => ({
@@ -26,10 +37,14 @@ export default function ContactDetail({ contact, onClose, onSave }: Props) {
     }));
   };
 
-  const handleCustomFieldChange = (id: string, field: 'label' | 'value', value: string) => {
-    setCustomFields(prev => prev.map(f => 
-      f.id === id ? { ...f, [field]: value } : f
-    ));
+  const handleCustomFieldChange = (label: string, value: string) => {
+    setCustomFields(prev => {
+      const existingField = prev.find(f => f.label === label);
+      if (existingField) {
+        return prev.map(f => f.label === label ? { ...f, value } : f);
+      }
+      return [...prev, { id: `custom_${label.toLowerCase().replace(/\s+/g, '_')}`, label, value }];
+    });
   };
 
   const handleSave = () => {
@@ -37,14 +52,7 @@ export default function ContactDetail({ contact, onClose, onSave }: Props) {
       ...editedContact,
       customFields
     });
-  };
-
-  const addCustomField = () => {
-    setCustomFields(prev => [...prev, {
-      id: Date.now().toString(),
-      label: 'New Field',
-      value: ''
-    }]);
+    onClose();
   };
 
   return (
@@ -77,35 +85,30 @@ export default function ContactDetail({ contact, onClose, onSave }: Props) {
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#1E1E3F] focus:ring-[#1E1E3F]"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Company</label>
+            <input 
+              type="text" 
+              value={editedContact.company || ''}
+              onChange={(e) => handleInputChange('company', e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#1E1E3F] focus:ring-[#1E1E3F]"
+            />
+          </div>
         </div>
 
         {/* Custom Fields */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-medium text-gray-700">Custom Fields</h3>
-            <button 
-              onClick={addCustomField}
-              className="text-sm text-blue-600 hover:text-blue-700"
-            >
-              + Add Field
-            </button>
-          </div>
-          
+        <div className="space-y-4 mt-6">
+          <h3 className="text-sm font-medium text-gray-700">Custom Fields</h3>
           {customFields.map(field => (
-            <div key={field.id} className="flex gap-4">
-              <input 
+            <div key={field.id}>
+              <label className="block text-sm font-medium text-gray-700">
+                {field.label}
+              </label>
+              <input
                 type="text"
-                placeholder="Field Label"
-                value={field.label}
-                onChange={(e) => handleCustomFieldChange(field.id, 'label', e.target.value)}
-                className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-[#1E1E3F] focus:ring-[#1E1E3F]"
-              />
-              <input 
-                type="text"
-                placeholder="Value"
                 value={field.value}
-                onChange={(e) => handleCustomFieldChange(field.id, 'value', e.target.value)}
-                className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-[#1E1E3F] focus:ring-[#1E1E3F]"
+                onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#1E1E3F] focus:ring-[#1E1E3F]"
               />
             </div>
           ))}

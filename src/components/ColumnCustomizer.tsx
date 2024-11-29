@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Contact } from '@/types';
 
+type CustomColumnKey = `custom_${string}`;
+type ColumnKey = keyof Contact | 'relationshipStrength' | CustomColumnKey;
+
 interface Props {
   availableColumns: Array<{
     key: string;
@@ -8,8 +11,8 @@ interface Props {
     description?: string;
     isCustom?: boolean;
   }>;
-  activeColumns: string[];
-  onColumnChange: (columns: string[]) => void;
+  activeColumns: ColumnKey[];
+  onColumnChange: (columns: ColumnKey[]) => void;
   onAddColumn: (column: { 
     key: string; 
     label: string; 
@@ -35,15 +38,21 @@ export default function ColumnCustomizer({
   const handleAddColumn = () => {
     if (!newColumn.key || !newColumn.label) return;
     
-    onAddColumn({
-      key: newColumn.key,
+    const customKey = `custom_${newColumn.key}` as CustomColumnKey;
+    
+    const newColumnData = {
+      key: customKey,
       label: newColumn.label,
       isCustom: true,
       render: (contact: Contact) => {
-        return contact.customFields?.find(f => f.label === newColumn.label)?.value || '-';
+        const customField = contact.customFields?.find(f => 
+          f.label.toLowerCase().replace(/\s+/g, '_') === newColumn.label.toLowerCase().replace(/\s+/g, '_')
+        );
+        return customField?.value || '-';
       }
-    });
+    };
     
+    onAddColumn(newColumnData);
     setNewColumn({ key: '', label: '' });
     setShowNewColumnModal(false);
   };
@@ -92,10 +101,10 @@ export default function ColumnCustomizer({
                 <div key={column.key} className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded-lg group">
                   <input
                     type="checkbox"
-                    checked={activeColumns.includes(column.key)}
+                    checked={activeColumns.includes(column.key as ColumnKey)}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        onColumnChange([...activeColumns, column.key]);
+                        onColumnChange([...activeColumns, column.key as ColumnKey]);
                       } else {
                         onColumnChange(activeColumns.filter(key => key !== column.key));
                       }

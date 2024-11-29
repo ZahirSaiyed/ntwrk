@@ -6,7 +6,7 @@ import { signIn } from 'next-auth/react';
 
 export default function Auth() {
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/contacts' });
+    signIn('google', { callbackUrl: '/overview' });
   };
 
   return (
@@ -15,7 +15,7 @@ export default function Auth() {
         {/* Logo/Header */}
         <div className="text-center mb-12">
           <Link href="/" className="inline-block">
-            <h1 className="text-3xl font-bold text-[#1E1E3F]">ntwrk</h1>
+            <h1 className="text-3xl font-bold text-[#1E1E3F]">Node</h1>
           </Link>
           <h2 className="mt-8 text-4xl font-bold text-[#1E1E3F]">
             Grow your network

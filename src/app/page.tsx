@@ -11,7 +11,7 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="flex justify-between h-16 items-center">
             <Link href="/" className="text-2xl font-bold text-[#1E1E3F]">
-              ntwrk
+              Node
             </Link>
             <div className="hidden md:flex items-center space-x-8">
               <Link href="/auth" className="px-6 py-2 bg-[#1E1E3F] text-white rounded-full hover:bg-[#2D2D5F] transition-all">

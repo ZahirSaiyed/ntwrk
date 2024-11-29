@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 interface ContactTableProps {
   contacts: Contact[];
   columns: Column[];
+  className?: string;
   onContactClick?: (contact: Contact) => void;
   sortConfig?: {
     key: keyof Contact | null;
@@ -28,41 +29,39 @@ export default function ContactTable({
   sortConfig,
   onSort,
   currentPage,
-  itemsPerPage
+  itemsPerPage,
+  className
 }: ContactTableProps) {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedContacts = contacts.slice(startIndex, startIndex + itemsPerPage);
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            {columns.map(column => (
+      <table className={`w-full ${className}`}>
+        <thead>
+          <tr className="bg-[#F4F4FF]">
+            {columns.map((column) => (
               <th 
                 key={column.key}
-                onClick={() => {
-                  if (!column.isCustom && onSort) {
-                    onSort(column.key as keyof Contact);
-                  }
-                }}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 
-                         uppercase tracking-wider cursor-pointer"
+                className="px-6 py-4 text-left text-sm font-semibold text-[#1E1E3F]"
               >
                 {column.label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {paginatedContacts.map((contact) => (
+        <tbody className="divide-y divide-gray-100">
+          {paginatedContacts.map((contact, idx) => (
             <tr 
               key={contact.email}
+              className={`
+                hover:bg-gray-50 cursor-pointer transition-colors
+                ${idx % 2 === 0 ? 'bg-white' : 'bg-[#FAFAFA]'}
+              `}
               onClick={() => onContactClick?.(contact)}
-              className="hover:bg-gray-50 cursor-pointer"
             >
-              {columns.map(column => (
-                <td key={column.key} className="px-6 py-4 whitespace-nowrap">
+              {columns.map((column) => (
+                <td key={column.key} className="px-6 py-4 text-sm text-gray-600">
                   {column.render(contact)}
                 </td>
               ))}

@@ -1,93 +1,92 @@
 import { motion } from 'framer-motion';
 
 interface Props {
-  onSelect: (outcome: 'organize' | 'engage' | 'analyze' | null) => void;
-  selectedOutcome: 'organize' | 'engage' | 'analyze' | null;
+  onSelect: (outcome: 'all' | 'organize' | 'analyze' | null) => void;
+  selectedOutcome: 'all' | 'organize' | 'analyze' | null;
+  variant?: 'dashboard' | 'insights';
 }
 
-export default function OutcomeSelector({ onSelect, selectedOutcome }: Props) {
+export default function OutcomeSelector({ onSelect, selectedOutcome, variant = 'dashboard' }: Props) {
+  const dashboardOutcomes = [
+    {
+      id: 'all',
+      title: 'View My Network',
+      description: 'See all your contacts in one place',
+      icon: '/undraw_contacts.svg',
+      actionText: 'Browse Contacts',
+      benefit: 'Get a complete overview of your professional network',
+      path: '/contacts'
+    },
+    {
+      id: 'analyze',
+      title: 'Network Insights',
+      description: 'Discover patterns and opportunities in your network',
+      icon: '/undraw_analyze.svg',
+      actionText: 'View Insights',
+      benefit: 'Make data-driven decisions about your relationships',
+      path: '/insights'
+    }
+  ];
+
+  const insightOutcomes = [
+    {
+      id: 'organize',
+      title: 'Organize Network',
+      description: 'Create smart groups and categorize your contacts',
+      icon: '/undraw_organize.svg',
+      actionText: 'Start Organizing',
+      benefit: 'Save time with AI-powered contact organization'
+    },
+    {
+      id: 'analyze',
+      title: 'Analyze Patterns',
+      description: 'Visualize your network growth and patterns',
+      icon: '/undraw_analyze.svg',
+      actionText: 'See Analytics',
+      benefit: 'Understand your network strength'
+    }
+  ];
+
+  const outcomes = variant === 'dashboard' ? dashboardOutcomes : insightOutcomes;
+
   return (
-    <motion.div
-      layout
-      className={`transition-all ${
-        selectedOutcome ? 'mb-6' : 'mb-8'
-      }`}
-    >
-      <motion.div
-        layout
-        className={`grid ${
-          selectedOutcome 
-            ? 'grid-cols-3 gap-4' 
-            : 'grid-cols-1 md:grid-cols-3 gap-6'
-        }`}
-      >
-        {['organize', 'engage', 'analyze'].map((outcome) => (
-          <motion.button
-            layout
-            key={outcome}
-            onClick={() => onSelect(outcome as 'organize' | 'engage' | 'analyze')}
-            className={`p-6 bg-white rounded-2xl transition-all ${
-              selectedOutcome === outcome 
-                ? 'ring-2 ring-[#1E1E3F] ring-opacity-50' 
-                : 'hover:shadow-md'
-            } ${
-              selectedOutcome && selectedOutcome !== outcome 
-                ? 'opacity-50' 
-                : ''
-            }`}
-          >
-            <motion.div
-              layout
-              className={`flex items-center ${
-                selectedOutcome ? 'gap-3' : 'flex-col'
-              }`}
-            >
-              <motion.div
-                layout
-                className={`${
-                  selectedOutcome 
-                    ? 'w-8 h-8' 
-                    : 'h-48 w-full flex items-center justify-center mb-4'
-                }`}
-              >
-                <img
-                  src={`/undraw_${outcome}.svg`}
-                  alt={outcome}
-                  className={`transition-all ${
-                    selectedOutcome 
-                      ? 'w-8 h-8' 
-                      : 'w-40 h-40 group-hover:scale-105'
-                  }`}
-                />
-              </motion.div>
-              <motion.div layout className="text-left">
-                <motion.h3 
-                  layout
-                  className={`font-semibold ${
-                    selectedOutcome ? 'text-base' : 'text-lg mb-2'
-                  }`}
-                >
-                  {outcome === 'organize' && 'Organize Network'}
-                  {outcome === 'engage' && 'Engage Contacts'}
-                  {outcome === 'analyze' && 'Analyze Patterns'}
-                </motion.h3>
-                {!selectedOutcome && (
-                  <motion.p 
-                    initial={{ opacity: 1 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-sm text-gray-500"
-                  >
-                    {outcome === 'organize' && 'Create smart groups and categorize your contacts'}
-                    {outcome === 'engage' && 'Get actionable insights to maintain relationships'}
-                    {outcome === 'analyze' && 'Visualize your network growth and patterns'}
-                  </motion.p>
-                )}
-              </motion.div>
-            </motion.div>
-          </motion.button>
-        ))}
-      </motion.div>
-    </motion.div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {outcomes.map((outcome) => (
+        <button
+          key={outcome.id}
+          onClick={() => onSelect(outcome.id as any)}
+          className="group p-8 bg-white rounded-2xl transition-all hover:shadow-lg hover:scale-[1.02] text-left"
+        >
+          <div className="h-40 flex items-center justify-center mb-6">
+            <img
+              src={outcome.icon}
+              alt={outcome.title}
+              className="w-32 h-32 group-hover:scale-105 transition-transform"
+            />
+          </div>
+          
+          <h3 className="text-2xl font-semibold mb-3">
+            {outcome.title}
+          </h3>
+          <p className="text-gray-600 mb-4">
+            {outcome.description}
+          </p>
+          
+          <div className="flex items-center gap-2 text-[#1E1E3F] mb-4">
+            <span className="font-medium">{outcome.actionText}</span>
+            <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" 
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+
+          <div className="p-4 bg-[#F4F4FF] rounded-lg">
+            <div className="text-sm text-[#1E1E3F]">
+              ✨ {outcome.benefit}
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
   );
 }

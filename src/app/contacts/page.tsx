@@ -1,10 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import AppLayout from '@/components/Layout/AppLayout';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { format } from "date-fns";
-import ViewToggle from "@/components/ViewToggle";
 import GroupFAB from "@/components/GroupFAB";
 import GroupModal from "@/components/GroupModal";
 import { Contact } from '@/types';
@@ -18,6 +18,7 @@ import Pagination from "@/components/Pagination";
 import { calculateVelocityScore } from '@/utils/velocityTracking';
 import ColumnCustomizer from "@/components/ColumnCustomizer";
 import ExportButton from '@/components/ExportButton';
+import { useRouter } from 'next/navigation';
 
 // interface Contact {
 //   name: string;
@@ -32,7 +33,8 @@ type SortConfig = {
   direction: 'asc' | 'desc';
 };
 
-type ColumnKey = keyof Contact | 'relationshipStrength';
+type CustomColumnKey = `custom_${string}`;
+type ColumnKey = keyof Contact | 'relationshipStrength' | CustomColumnKey;
 
 type Column = {
   key: ColumnKey;
@@ -41,9 +43,13 @@ type Column = {
   render: (contact: Contact) => React.ReactNode;
 };
 
+interface CustomField {
+  label: string;
+  value: string;
+}
+
 export default function ContactsPage() {
   const { data: session } = useSession();
-  const [view, setView] = useState<'grid' | 'table'>('grid');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -57,75 +63,16 @@ export default function ContactsPage() {
   const itemsPerPage = 10;
   const [lastDeletedGroup, setLastDeletedGroup] = useState<{id: string, name: string, members: string[]} | null>(null);
   const [editingGroup, setEditingGroup] = useState<{id: string, name: string, members: string[]} | null>(null);
-  const [activeColumns, setActiveColumns] = useState([
+  const [activeColumns, setActiveColumns] = useState<ColumnKey[]>([
     'name',
     'email',
+    'company',
     'lastContacted'
   ]);
   const [customColumns, setCustomColumns] = useState<Column[]>([]);
-
-  const availableColumns = [
-    {
-      key: 'name',
-      label: 'Name',
-      description: 'Contact\'s full name',
-      render: (contact: Contact) => contact.name
-    },
-    {
-      key: 'email',
-      label: 'Email',
-      description: 'Primary email address',
-      render: (contact: Contact) => contact.email
-    },
-    {
-      key: 'lastContacted',
-      label: 'Last Contacted',
-      description: 'Most recent interaction date',
-      render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
-    },
-    {
-      key: 'company',
-      label: 'Company',
-      description: 'Current organization',
-      render: (contact: Contact) => contact.company || '-'
-    },
-    {
-      key: 'relationshipStrength',
-      label: 'Relationship',
-      description: 'Connection strength based on interaction frequency',
-      render: (contact: Contact) => {
-        const score = calculateVelocityScore(contact);
-        return (
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${
-              score.score > 80 ? 'bg-green-500' :
-              score.score > 50 ? 'bg-blue-500' :
-              'bg-yellow-500'
-            }`} />
-            {score.score > 80 ? 'Strong' :
-             score.score > 50 ? 'Stable' :
-             'Needs Attention'}
-          </div>
-        );
-      }
-    }
-  ];
-
-  useEffect(() => {
-    // Load groups from localStorage on mount
-    const savedGroups = localStorage.getItem('contact-groups');
-    if (savedGroups) {
-      setGroups(JSON.parse(savedGroups));
-    }
-  }, []);
-
-  // Save groups to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('contact-groups', JSON.stringify(groups));
-  }, [groups]);
-
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [availableColumnsList, setAvailableColumnsList] = useState<Column[]>([]);
 
   const { data: contacts = [], isLoading, error } = useQuery({
     queryKey: ['contacts', session?.user?.email],
@@ -142,6 +89,64 @@ export default function ContactsPage() {
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   });
+
+  const availableColumns = useMemo(() => [
+    {
+      key: 'name' as ColumnKey,
+      label: 'Name',
+      description: 'Contact\'s full name',
+      render: (contact: Contact) => contact.name
+    },
+    {
+      key: 'email' as ColumnKey,
+      label: 'Email',
+      description: 'Primary email address',
+      render: (contact: Contact) => contact.email
+    },
+    {
+      key: 'lastContacted' as ColumnKey,
+      label: 'Last Contacted',
+      description: 'Most recent interaction date',
+      render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
+    },
+    {
+      key: 'company' as ColumnKey,
+      label: 'Company',
+      description: 'Current organization',
+      render: (contact: Contact) => contact.company || '-'
+    },
+    ...(contacts[0]?.customFields?.map((field: CustomField) => ({
+      key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
+      label: field.label,
+      description: `Custom field: ${field.label}`,
+      render: (contact: Contact) => {
+        const customField = contact.customFields?.find(f => 
+          f.label.toLowerCase().replace(/\s+/g, '_') === field.label.toLowerCase().replace(/\s+/g, '_')
+        );
+        return customField?.value || '-';
+      }
+    })) || [])
+  ], [contacts]);
+
+  useEffect(() => {
+    setAvailableColumnsList(availableColumns);
+  }, [availableColumns]);
+
+  useEffect(() => {
+    // Load groups from localStorage on mount
+    const savedGroups = localStorage.getItem('contact-groups');
+    if (savedGroups) {
+      setGroups(JSON.parse(savedGroups));
+    }
+  }, []);
+
+  // Save groups to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('contact-groups', JSON.stringify(groups));
+  }, [groups]);
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const getFilteredContacts = (contacts: Contact[], searchTerm: string, activeFilter: FilterType) => {
     const sortedContacts = [...contacts].sort((a, b) => 
@@ -228,6 +233,54 @@ export default function ContactsPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, filter]);
+
+  useEffect(() => {
+    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome');
+    if (!hasSeenWelcome) {
+      router.push('/welcome');
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (contacts[0]?.customFields) {
+      const customFieldKeys = contacts[0].customFields.map((field: CustomField) => 
+        `custom_${field.label.toLowerCase().replace(/\s+/g, '_')}` as ColumnKey
+      );
+      
+      // Only update if there are new fields not already in activeColumns
+      const newFields = customFieldKeys.filter((key: string) => !activeColumns.includes(key as ColumnKey));
+      if (newFields.length > 0) {
+        setActiveColumns(prev => [...prev, ...(newFields as ColumnKey[])]);
+      }
+    }
+  }, [contacts, activeColumns]);
+
+  const updateContactMutation = useMutation({
+    mutationFn: async (updatedContact: Contact) => {
+      const response = await fetch(`/api/contacts/${updatedContact.email}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedContact),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update contact');
+      }
+      return response.json();
+    },
+    onSuccess: (updatedContact) => {
+      console.log('Contact updated:', updatedContact);
+      queryClient.setQueryData(['contacts', session?.user?.email], (oldData: Contact[] | undefined) => {
+        if (!oldData) return [updatedContact];
+        const newData = oldData.map(contact => 
+          contact.email === updatedContact.email ? updatedContact : contact
+        );
+        console.log('Updated contacts:', newData);
+        return newData;
+      });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -383,216 +436,194 @@ export default function ContactsPage() {
         >
           🔕 No Reply ({noReplyContacts.length})
         </button>
+        {groups.map((group) => (
+          <button 
+            key={group.id}
+            onClick={() => setFilter(`group-${group.id}`)}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+              filter === `group-${group.id}`
+                ? 'bg-[#1E1E3F] text-white'
+                : 'bg-[#F4F4FF] text-[#1E1E3F] hover:bg-[#E4E4FF]'
+            }`}
+          >
+            👥 {group.name}
+          </button>
+        ))}
       </div>
     );
   };
 
   const quickFilters = [
-    { id: 'all', label: 'All', icon: '👥' },
-    { id: 'active', label: 'Active', icon: '🔥' },
-    { id: 'needsAttention', label: 'Needs Attention', icon: '⚡️' },
-    { id: 'noReply', label: 'No Reply', icon: '🔕' }
+    { id: 'all', label: 'All', icon: '👥', isGroup: false },
+    { id: 'active', label: 'Active', icon: '🔥', isGroup: false },
+    { id: 'needsAttention', label: 'Needs Attention', icon: '⚡️', isGroup: false },
+    { id: 'noReply', label: 'No Reply', icon: '🔕', isGroup: false }
   ];
 
-  const handleAddColumn = (newColumn: { 
-    key: string;
-    label: string;
-    render: (contact: Contact) => React.ReactNode;
-    isCustom?: boolean;
+  const handleAddColumn = (column: { 
+    key: string; 
+    label: string; 
+    render: (contact: Contact) => React.ReactNode 
   }) => {
-    const customColumn: Column = {
-      key: newColumn.key as ColumnKey,
-      label: newColumn.label,
-      description: `Custom column: ${newColumn.label}`,
-      render: newColumn.render
+    const newColumn = {
+      key: column.key as ColumnKey,
+      label: column.label,
+      description: `Custom field: ${column.label}`,
+      render: column.render
     };
-    setCustomColumns(prev => [...prev, customColumn]);
-    setActiveColumns(prev => [...prev, newColumn.key as ColumnKey]);
+    
+    // Update contacts to include the new custom field
+    const updatedContacts = contacts.map((contact: Contact) => ({
+      ...contact,
+      customFields: [
+        ...(contact.customFields || []),
+        {
+          id: column.key,
+          label: column.label,
+          value: ''
+        }
+      ]
+    }));
+    
+    queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+    
+    setActiveColumns(prev => {
+      if (prev.includes(column.key as ColumnKey)) return prev;
+      return [...prev, column.key as ColumnKey];
+    });
+    
+    setAvailableColumnsList(prev => {
+      if (prev.some(col => col.key === column.key)) return prev;
+      return [...prev, newColumn];
+    });
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
-      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Header Section */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-[#1E1E3F]">Your Network</h1>
-            <p className="text-gray-600 mt-1">Manage and grow your professional relationships</p>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="relative w-full max-w-md">
-              <SearchInput value={search} onChange={setSearch} />
+    <AppLayout>
+      <div className="p-8 space-y-8">
+        {/* Enhanced Header Section */}
+        <div className="bg-gradient-to-r from-[#F4F4FF] to-[#FAFAFA] rounded-3xl p-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-[#1E1E3F] mb-2">Your Network</h1>
+              <p className="text-gray-600">Manage and organize your professional connections</p>
             </div>
-            <ExportButton contacts={contacts} />
-          </div>
-        </div>
-
-        {/* Controls and Quick Filters */}
-        <div className="mb-8 space-y-4">
-          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <ViewToggle view={view} onViewChange={setView} />
-              <button 
+              <button
                 onClick={() => setShowGroupModal(true)}
-                className="px-4 py-2 bg-[#1E1E3F] text-white rounded-full hover:bg-[#2D2D5F] transition-all flex items-center gap-2 shadow-sm hover:shadow-md"
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#1E1E3F] to-[#2D2D5F] text-white rounded-xl hover:opacity-90 transition-all"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span>Create Group</span>
+                Create Group
               </button>
+              <ExportButton contacts={contacts} />
             </div>
-            
-            {/* Navigation to Smart Insights */}
-            <Link 
-              href="/insights"
-              className="flex items-center gap-2 text-[#1E1E3F] hover:text-[#2D2D5F] transition-colors"
-            >
-              <span>Smart Insights</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
           </div>
 
-          {/* Custom Group Filters */}
-          <div className="flex flex-wrap items-center gap-2 mb-6">
-            {/* Quick Filters */}
-            <div className="flex flex-wrap items-center gap-2">
-              {quickFilters.map(({ id, label, icon }) => (
+          {/* Enhanced Filter Pills */}
+          <div className="flex items-center gap-4">
+            {[...quickFilters, ...groups.map(group => ({
+              id: `group-${group.id}`,
+              label: group.name,
+              icon: '👥',
+              isGroup: true,
+              groupData: group
+            }))].map((filterItem: {
+              id: string;
+              label: string;
+              icon: string;
+              isGroup: boolean;
+              groupData?: {id: string, name: string, members: string[]};
+            }) => (
+              <div key={filterItem.id} className="relative group">
                 <button
-                  key={id}
-                  onClick={() => setFilter(id as FilterType)}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-colors ${
-                    filter === id
-                      ? 'bg-[#1E1E3F] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  onClick={() => setFilter(filterItem.id as FilterType)}
+                  className={`
+                    px-4 py-2 rounded-full text-sm font-medium transition-all
+                    ${filter === filterItem.id
+                      ? 'bg-[#1E1E3F] text-white' 
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }
+                  `}
                 >
-                  {icon} {label}
+                  {filterItem.icon} {filterItem.id.startsWith('group-') 
+                    ? filterItem.label 
+                    : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
                 </button>
-              ))}
-            </div>
-
-            {/* Groups Section */}
-            <div className="flex flex-wrap items-center gap-2">
-              {groups.map(group => (
-                <div key={group.id} className="relative group">
-                  <button
-                    onClick={() => setFilter(`group-${group.id}`)}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-colors ${
-                      filter === `group-${group.id}`
-                        ? 'bg-[#1E1E3F] text-white'
-                        : 'bg-[#F4F4FF] text-[#1E1E3F] hover:bg-[#E4E4FF]'
-                    }`}
-                  >
-                    👥 {group.name} ({group.members.length})
-                  </button>
-                  
-                  {/* Action buttons container */}
-                  <div className="absolute -top-2 -right-2 hidden group-hover:flex gap-1">
+                
+                {filterItem.isGroup && (
+                  <div className="absolute -top-2 -right-2 flex gap-1">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleEditGroup(group);
+                        handleEditGroup(filterItem.groupData!);
                       }}
-                      className="h-5 w-5 flex items-center justify-center bg-[#1E1E3F] text-white rounded-full text-xs hover:bg-[#2D2D5F] shadow-sm"
+                      className="w-5 h-5 bg-blue-500 text-white rounded-full 
+                        opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      title="Edit group"
                     >
                       ✎
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteGroup(group.id);
+                        handleDeleteGroup(filterItem.id.replace('group-', ''));
                       }}
-                      className="h-5 w-5 flex items-center justify-center bg-red-500 text-white rounded-full text-xs hover:bg-red-600 shadow-sm"
+                      className="w-5 h-5 bg-red-500 text-white rounded-full 
+                        opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      title="Delete group"
                     >
                       ×
                     </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Contact Views */}
-        <div className="bg-[#FAFAFA] rounded-3xl">
-          {view === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-              {filteredContacts.map((contact) => (
-                <div 
-                  key={contact.email}
-                  className="group bg-white rounded-2xl p-6 transition-all 
-                            shadow-[0_2px_8px_0_rgba(0,0,0,0.04)] 
-                            hover:shadow-[0_4px_16px_0_rgba(0,0,0,0.08)]
-                            border border-gray-100/50"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-lg text-[#1E1E3F] truncate">{contact.name}</h3>
-                      <p className="text-gray-500 truncate">{contact.email}</p>
-                      <div className="mt-3 flex items-center text-sm text-gray-400">
-                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        Last contacted: {format(new Date(contact.lastContacted), 'MMM d, yyyy')}
-                      </div>
-                    </div>
-                    <div className="ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 hover:bg-gray-50 rounded-full">
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div>
-              <div className="flex justify-end mb-4">
-                <ColumnCustomizer
-                  availableColumns={[...availableColumns, ...customColumns]}
-                  activeColumns={activeColumns}
-                  onColumnChange={setActiveColumns}
-                  onAddColumn={handleAddColumn}
-                  onEditColumn={(key, newLabel) => {
-                    setCustomColumns(prev => prev.map(col => 
-                      col.key === key ? { ...col, label: newLabel } : col
-                    ));
-                  }}
-                />
-              </div>
-              <ContactTable 
-                contacts={filteredContacts}
-                onContactClick={(contact: Contact) => setSelectedContact(contact)}
-                currentPage={currentPage}
-                itemsPerPage={itemsPerPage}
-                columns={[...availableColumns, ...customColumns].filter(col => activeColumns.includes(col.key))}
-              />
-              <Pagination
-                currentPage={currentPage}
-                totalPages={Math.ceil(filteredContacts.length / itemsPerPage)}
-                onPageChange={(page) => setCurrentPage(page)}
-              />
-            </div>
-          )}
-        </div>
+        {/* Enhanced Table Section */}
+        <div className="bg-white rounded-3xl shadow-sm">
+          <div className="p-4 flex justify-end border-b border-gray-100">
+            <ColumnCustomizer
+              availableColumns={availableColumnsList}
+              activeColumns={activeColumns}
+              onColumnChange={(columns) => setActiveColumns(columns as ColumnKey[])}
+              onAddColumn={handleAddColumn}
+              onEditColumn={(key, newLabel) => {
+                setCustomColumns(prev => prev.map(col => 
+                  col.key === key ? { ...col, label: newLabel } : col
+                ));
+              }}
+            />
+          </div>
 
-        {selectedContact && (
-          <ContactDetail
-            contact={selectedContact}
-            onClose={() => setSelectedContact(null)}
-            onSave={(updatedContact) => {
-              // Handle saving updated contact
-              setSelectedContact(null);
-            }}
+          <ContactTable 
+            contacts={getSortedContacts(filteredContacts)}
+            onContactClick={(contact: Contact) => setSelectedContact(contact)}
+            currentPage={currentPage}
+            itemsPerPage={itemsPerPage}
+            columns={[...availableColumns, ...customColumns].filter(col => activeColumns.includes(col.key))}
+            className="divide-y divide-gray-100"
           />
-        )}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={Math.ceil(filteredContacts.length / itemsPerPage)}
+            onPageChange={(page) => setCurrentPage(page)}
+            className="p-4 border-t border-gray-100"
+          />
+        </div>
       </div>
+
+      {selectedContact && (
+        <ContactDetail
+          contact={selectedContact}
+          onClose={() => setSelectedContact(null)}
+          onSave={(contact) => updateContactMutation.mutate(contact)}
+        />
+      )}
 
       {/* Group Modal */}
       <GroupModal
@@ -605,6 +636,6 @@ export default function ContactsPage() {
         onGroupCreate={handleGroupSave}
         editingGroup={editingGroup || undefined}
       />
-    </div>
+    </AppLayout>
   );
 }

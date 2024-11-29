@@ -1,7 +1,7 @@
 import { Contact, Group } from "@/types";
 import { useState } from "react";
 import { calculateVelocityScore } from '@/utils/velocityTracking';
-import GroupMembers from '@/components/GroupMembers';
+import GroupMembers from '@/components/insights/GroupMembers';
 import { formatDistanceToNow } from 'date-fns';
 
 // Add this before the SmartInsights component
