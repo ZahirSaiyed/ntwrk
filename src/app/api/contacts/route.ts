@@ -3,7 +3,9 @@ import { getServerSession } from 'next-auth';
 import { google } from 'googleapis';
 import { authOptions } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(
+  request: Request
+): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.email || !session.accessToken) {

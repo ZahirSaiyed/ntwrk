@@ -5,8 +5,8 @@ import { Contact } from '@/types';
 
 export async function PUT(
   request: Request,
-  context: { params: { email: string } }
-) {
+  { params }: { params: { email: string } }
+): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.email) {
@@ -17,12 +17,7 @@ export async function PUT(
     const body = await request.text();
     const updatedContact: Contact = JSON.parse(body);
     
-    return new NextResponse(JSON.stringify(updatedContact), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    return NextResponse.json(updatedContact, { status: 200 });
   } catch (error: any) {
     console.error('Error updating contact:', error);
     return NextResponse.json({ 
