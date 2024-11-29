@@ -5,8 +5,8 @@ import { Contact } from '@/types';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { email: string } }
-): Promise<NextResponse> {
+  context: { params: { email: string } }
+): Promise<Response> {
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.email) {
