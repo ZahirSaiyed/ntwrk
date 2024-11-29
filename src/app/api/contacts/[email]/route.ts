@@ -5,7 +5,7 @@ import { Contact } from '@/types';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { email: string } }
+  context: { params: { email: string } }
 ) {
   const session = await getServerSession(authOptions);
   
@@ -14,10 +14,9 @@ export async function PUT(
   }
 
   try {
-    const body = await request.text(); // Get raw body text first
-    const updatedContact: Contact = JSON.parse(body); // Then parse it
+    const body = await request.text();
+    const updatedContact: Contact = JSON.parse(body);
     
-    // Return the updated contact with proper headers
     return new NextResponse(JSON.stringify(updatedContact), {
       status: 200,
       headers: {
