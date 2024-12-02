@@ -19,6 +19,8 @@ import { calculateVelocityScore } from '@/utils/velocityTracking';
 import ColumnCustomizer from "@/components/ColumnCustomizer";
 import ExportButton from '@/components/ExportButton';
 import { useRouter } from 'next/navigation';
+import OnboardingPrompt from '@/components/OnboardingPrompt';
+import InboxCleanupAssistant from '@/components/insights/InboxCleanupAssistant';
 
 // interface Contact {
 //   name: string;
@@ -29,7 +31,7 @@ import { useRouter } from 'next/navigation';
 type FilterType = 'active' | 'noReply' | 'needsAttention' | 'all' | 'followup' | 'close' | `group-${string}`;
 
 type SortConfig = {
-  key: keyof Contact | null;
+  key: keyof Contact | CustomColumnKey | null;
   direction: 'asc' | 'desc';
 };
 
@@ -44,9 +46,24 @@ type Column = {
 };
 
 interface CustomField {
+  id: string;
   label: string;
   value: string;
 }
+
+// Add this interface before using Contact
+interface ContactWithSpam extends Contact {
+  isSpam?: boolean;
+}
+
+// Add this function before the importContactsMutation declaration
+const importContactsFunction = async () => {
+  const response = await fetch('/api/contacts/import', {
+    method: 'POST'
+  });
+  if (!response.ok) throw new Error('Failed to import contacts');
+  return response.json();
+};
 
 export default function ContactsPage() {
   const { data: session } = useSession();
@@ -74,6 +91,16 @@ export default function ContactsPage() {
   const queryClient = useQueryClient();
   const [availableColumnsList, setAvailableColumnsList] = useState<Column[]>([]);
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showCleanupAssistant, setShowCleanupAssistant] = useState(true);
+
+  const importContactsMutation = useMutation({
+    mutationFn: importContactsFunction,
+    onSuccess: (data) => {
+      setShowOnboarding(true);
+    }
+  });
+
   const { data: contacts = [], isLoading, error } = useQuery({
     queryKey: ['contacts', session?.user?.email],
     queryFn: async () => {
@@ -89,6 +116,11 @@ export default function ContactsPage() {
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   });
+
+  // Filter out spam contacts for display
+  const displayContacts = contacts.filter((contact: Contact) => 
+    !(contact as ContactWithSpam).isSpam
+  );
 
   const availableColumns = useMemo(() => [
     {
@@ -149,84 +181,92 @@ export default function ContactsPage() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const getFilteredContacts = (contacts: Contact[], searchTerm: string, activeFilter: FilterType) => {
-    const sortedContacts = [...contacts].sort((a, b) => 
-      new Date(b.lastContacted).getTime() - new Date(a.lastContacted).getTime()
-    );
+    let filteredResults = [...displayContacts];
     
-    return sortedContacts.filter(contact => {
-      const matchesSearch = 
-        contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contact.email.toLowerCase() === searchTerm.toLowerCase() ||
-        contact.email.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      if (!matchesSearch) return false;
-      
-      switch (activeFilter) {
-        case 'active': {
-          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-          const recentInteractions = contact.interactions.filter(i => 
-            new Date(i.date) > thirtyDaysAgo
-          ).length;
-          return recentInteractions >= 4;
-        }
-        case 'needsAttention': {
-          const velocity = calculateVelocityScore(contact);
-          const lastInteraction = contact.interactions[contact.interactions.length - 1];
-          return (
-            (velocity?.trend === 'falling' && velocity.score < 40) ||
-            (lastInteraction?.type === 'received' &&
-             new Date(lastInteraction.date) < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+    // Apply search filter
+    if (searchTerm) {
+      const searchTerms = searchTerm.toLowerCase().split(' ');
+      filteredResults = filteredResults.filter(contact => 
+        searchTerms.every(term =>
+          contact.name.toLowerCase().includes(term) ||
+          contact.email.toLowerCase().includes(term) ||
+          (contact.company && contact.company.toLowerCase().includes(term)) ||
+          contact.customFields?.some((field: CustomField) => 
+            field.value.toLowerCase().includes(term)
+          )
+        )
+      );
+    }
+    
+    // Apply group filter
+    if (activeFilter.startsWith('group-')) {
+      const groupId = activeFilter.replace('group-', '');
+      const group = groups.find(g => g.id === groupId);
+      filteredResults = filteredResults.filter(contact => 
+        group?.members.includes(contact.email) ?? false
+      );
+    }
+
+    // Apply sorting
+    if (sortConfig.key) {
+      filteredResults.sort((a, b) => {
+        // Handle custom field sorting
+        if (typeof sortConfig.key === 'string' && sortConfig.key.startsWith('custom_')) {
+          const aCustomField = a.customFields?.find((f: CustomField) => 
+            f.id === sortConfig.key
           );
-        }
-        case 'noReply':
-          return (
-            contact.email.toLowerCase().includes('noreply') ||
-            contact.email.toLowerCase().includes('no-reply') ||
-            contact.email.toLowerCase().includes('no.reply') ||
-            contact.email.toLowerCase().includes('donotreply') ||
-            contact.email.toLowerCase().includes('newsletter') ||
-            contact.email.toLowerCase().includes('marketing') ||
-            contact.email.toLowerCase().includes('notifications') ||
-            contact.email.toLowerCase().includes('updates') ||
-            contact.email.toLowerCase().includes('mailer.') ||
-            contact.email.toLowerCase().includes('mailchimp') ||
-            contact.email.toLowerCase().includes('sendgrid') ||
-            contact.email.toLowerCase().includes('campaign-') ||
-            // All messages are received (never sent by us) and high frequency
-            (contact.interactions.every(i => i.type === 'received') && 
-             contact.interactions.length > 10)
+          const bCustomField = b.customFields?.find((f: CustomField) => 
+            f.id === sortConfig.key
           );
-        default:
-          if (activeFilter.startsWith('group-')) {
-            const groupId = activeFilter.replace('group-', '');
-            const group = groups.find(g => g.id === groupId);
-            return group?.members.includes(contact.email) ?? false;
+          
+          const aValue = aCustomField?.value || '';
+          const bValue = bCustomField?.value || '';
+          
+          // Try to sort numerically if both values are numbers
+          const aNum = Number(aValue);
+          const bNum = Number(bValue);
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
           }
-          return true; // 'all' filter
-      }
-    });
+          
+          // Otherwise sort alphabetically
+          return sortConfig.direction === 'asc'
+            ? String(aValue).localeCompare(String(bValue))
+            : String(bValue).localeCompare(String(aValue));
+        }
+        
+        // Handle standard field sorting
+        if (sortConfig.key && sortConfig.key in a) {
+          const aValue = a[sortConfig.key as keyof Contact];
+          const bValue = b[sortConfig.key as keyof Contact];
+          
+          if (sortConfig.key === 'lastContacted') {
+            return sortConfig.direction === 'asc'
+              ? new Date(aValue as string).getTime() - new Date(bValue as string).getTime()
+              : new Date(bValue as string).getTime() - new Date(aValue as string).getTime();
+          }
+          
+          return sortConfig.direction === 'asc'
+            ? String(aValue).localeCompare(String(bValue))
+            : String(bValue).localeCompare(String(aValue));
+        }
+        
+        return 0;
+      });
+    }
+    
+    return filteredResults;
   };
 
   const filteredContacts = getFilteredContacts(contacts, search, filter);
 
-  const getSortedContacts = (contacts: Contact[]) => {
-    if (!sortConfig.key) return contacts;
-    
-    return [...contacts].sort((a, b) => {
-      const aValue = a[sortConfig.key!];
-      const bValue = b[sortConfig.key!];
-      
-      if (sortConfig.key === 'lastContacted') {
-        const aDate = aValue as string;
-        const bDate = bValue as string;
-        return sortConfig.direction === 'asc' 
-          ? new Date(aDate).getTime() - new Date(bDate).getTime()
-          : new Date(bDate).getTime() - new Date(aDate).getTime();
-      }
-      
-      return sortConfig.direction === 'asc'
-        ? String(aValue).localeCompare(String(bValue))
-        : String(bValue).localeCompare(String(aValue));
+  const handleSort = (key: keyof Contact | CustomColumnKey) => {
+    setSortConfig(prevConfig => {
+      const isSameKey = prevConfig.key === key;
+      return {
+        key,
+        direction: isSameKey && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+      };
     });
   };
 
@@ -376,97 +416,14 @@ export default function ContactsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const QuickFilters = () => {
-    const activeContacts = contacts.filter((contact: Contact) => {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const recentInteractions = contact.interactions.filter(i => 
-        new Date(i.date) > thirtyDaysAgo
-      ).length;
-      return recentInteractions >= 4;
-    });
-
-    const needsAttentionContacts = contacts.filter((contact: Contact) => {
-      const velocity = calculateVelocityScore(contact);
-      const lastInteraction = contact.interactions[contact.interactions.length - 1];
-      return (
-        (velocity?.trend === 'falling' && velocity.score < 40) ||
-        (lastInteraction?.type === 'received' &&
-         new Date(lastInteraction.date) < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-      );
-    });
-
-    const noReplyContacts = contacts.filter((contact: Contact) => {
-      return (
-        contact.interactions.length > 3 &&
-        contact.interactions.every(i => i.type === 'sent') ||
-        contact.email.toLowerCase().includes('noreply') ||
-        contact.email.toLowerCase().includes('no-reply')
-      );
-    });
-
-    return (
-      <div className="flex flex-wrap gap-2">
-        <button 
-          onClick={() => setFilter('active')}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-            filter === 'active'
-              ? 'bg-green-600 text-white'
-              : 'bg-green-50 text-green-700 hover:bg-green-100'
-          }`}
-        >
-          🔥 Active ({activeContacts.length})
-        </button>
-        <button 
-          onClick={() => setFilter('needsAttention')}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-            filter === 'needsAttention'
-              ? 'bg-yellow-600 text-white'
-              : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
-          }`}
-        >
-          ⚡️ Needs Attention ({needsAttentionContacts.length})
-        </button>
-        <button 
-          onClick={() => setFilter('noReply')}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-            filter === 'noReply'
-              ? 'bg-red-600 text-white'
-              : 'bg-red-50 text-red-700 hover:bg-red-100'
-          }`}
-        >
-          🔕 No Reply ({noReplyContacts.length})
-        </button>
-        {groups.map((group) => (
-          <button 
-            key={group.id}
-            onClick={() => setFilter(`group-${group.id}`)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              filter === `group-${group.id}`
-                ? 'bg-[#1E1E3F] text-white'
-                : 'bg-[#F4F4FF] text-[#1E1E3F] hover:bg-[#E4E4FF]'
-            }`}
-          >
-            👥 {group.name}
-          </button>
-        ))}
-      </div>
-    );
-  };
-
-  const quickFilters = [
-    { id: 'all', label: 'All', icon: '👥', isGroup: false },
-    { id: 'active', label: 'Active', icon: '🔥', isGroup: false },
-    { id: 'needsAttention', label: 'Needs Attention', icon: '⚡️', isGroup: false },
-    { id: 'noReply', label: 'No Reply', icon: '🔕', isGroup: false }
-  ];
-
   const handleAddColumn = (column: { 
     key: string; 
     label: string; 
     render: (contact: Contact) => React.ReactNode 
   }) => {
+    const customKey = `custom_${column.label.toLowerCase().replace(/\s+/g, '_')}` as CustomColumnKey;
     const newColumn = {
-      key: column.key as ColumnKey,
+      key: customKey,
       label: column.label,
       description: `Custom field: ${column.label}`,
       render: column.render
@@ -478,7 +435,7 @@ export default function ContactsPage() {
       customFields: [
         ...(contact.customFields || []),
         {
-          id: column.key,
+          id: customKey,
           label: column.label,
           value: ''
         }
@@ -488,15 +445,29 @@ export default function ContactsPage() {
     queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
     
     setActiveColumns(prev => {
-      if (prev.includes(column.key as ColumnKey)) return prev;
-      return [...prev, column.key as ColumnKey];
+      if (prev.includes(customKey)) return prev;
+      return [...prev, customKey];
     });
     
     setAvailableColumnsList(prev => {
-      if (prev.some(col => col.key === column.key)) return prev;
+      if (prev.some(col => col.key === customKey)) return prev;
       return [...prev, newColumn];
     });
   };
+
+  const handleStartCleanup = () => {
+    setShowOnboarding(false);
+    setShowCleanupAssistant(true);
+  };
+
+  const handleSkipOnboarding = () => {
+    setShowOnboarding(false);
+    // Optionally, set a flag in localStorage or user settings to not show again
+  };
+
+  const quickFilters = [
+    { id: 'all', label: 'All', icon: '👥', isGroup: false }
+  ];
 
   return (
     <AppLayout>
@@ -584,6 +555,42 @@ export default function ContactsPage() {
           </div>
         </div>
 
+        {/* Enhanced Search Bar */}
+        <div className="bg-white rounded-3xl shadow-sm mb-4">
+          <div className="p-4">
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, email, company..."
+                className="w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent transition-all"
+              />
+              <svg 
+                className="w-6 h-6 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Enhanced Table Section */}
         <div className="bg-white rounded-3xl shadow-sm">
           <div className="p-4 flex justify-end border-b border-gray-100">
@@ -601,12 +608,14 @@ export default function ContactsPage() {
           </div>
 
           <ContactTable 
-            contacts={getSortedContacts(filteredContacts)}
-            onContactClick={(contact: Contact) => setSelectedContact(contact)}
+            contacts={filteredContacts}
+            onContactClick={setSelectedContact}
             currentPage={currentPage}
             itemsPerPage={itemsPerPage}
-            columns={[...availableColumns, ...customColumns].filter(col => activeColumns.includes(col.key))}
+            columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
             className="divide-y divide-gray-100"
+            sortConfig={sortConfig}
+            onSort={handleSort}
           />
           <Pagination
             currentPage={currentPage}
@@ -622,6 +631,7 @@ export default function ContactsPage() {
           contact={selectedContact}
           onClose={() => setSelectedContact(null)}
           onSave={(contact) => updateContactMutation.mutate(contact)}
+          onAddColumn={handleAddColumn}
         />
       )}
 
@@ -636,6 +646,44 @@ export default function ContactsPage() {
         onGroupCreate={handleGroupSave}
         editingGroup={editingGroup || undefined}
       />
+
+      {/* Onboarding Prompt */}
+      {showOnboarding && (
+        <OnboardingPrompt 
+          onStartCleanup={handleStartCleanup} 
+          onSkip={handleSkipOnboarding} 
+        />
+      )}
+
+      {/* Inbox Cleanup Assistant */}
+      {showCleanupAssistant && (
+        <InboxCleanupAssistant 
+          contacts={contacts}
+          onMarkAsSpam={(emails) => {
+            const updatedContacts = contacts.map((contact: Contact) => ({
+              ...contact,
+              isSpam: emails.includes(contact.email)
+            } as ContactWithSpam));
+            queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+          }}
+          onUndo={(email) => {
+            const updatedContacts = contacts.map((contact: Contact) => ({
+              ...contact,
+              isSpam: (contact as ContactWithSpam).isSpam === undefined ? false : 
+                     email === contact.email ? false : (contact as ContactWithSpam).isSpam
+            } as ContactWithSpam));
+            queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+          }}
+          onExcludeFromAnalytics={(exclude) => {
+            // Update analytics settings in user preferences
+            fetch('/api/user/preferences', {
+              method: 'PATCH',
+              body: JSON.stringify({ excludeFromAnalytics: exclude })
+            });
+          }}
+          onClose={() => setShowCleanupAssistant(false)}
+        />
+      )}
     </AppLayout>
   );
 }

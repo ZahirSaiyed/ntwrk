@@ -62,7 +62,7 @@ export default function GroupModal({ isOpen, onClose, contacts, onGroupCreate, e
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="e.g., Core Team, Investors, Partners..."
+                  placeholder="e.g., Investors, Tech Industry, Healthcare, Finance..."
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent"

@@ -170,7 +170,7 @@ export default function ColumnCustomizer({
                     key: e.target.value.toLowerCase().replace(/\s+/g, '_')
                   }))}
                   className="w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent"
-                  placeholder="e.g., LinkedIn Profile"
+                  placeholder="e.g., Industry"
                   autoFocus
                 />
               </div>

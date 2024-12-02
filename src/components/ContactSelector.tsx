@@ -33,9 +33,12 @@ export default function ContactSelector({
 
   // Smart filtering system
   const filteredContacts = useMemo(() => {
-    if (!filter) return contacts;
+    // First filter out spam contacts
+    const nonSpamContacts = contacts.filter(contact => !(contact as any).isSpam);
+    
+    if (!filter) return nonSpamContacts;
     const searchTerms = filter.toLowerCase().split(' ');
-    return contacts.filter(contact => 
+    return nonSpamContacts.filter(contact => 
       searchTerms.every(term =>
         contact.name.toLowerCase().includes(term) ||
         contact.email.toLowerCase().includes(term) ||
@@ -52,22 +55,58 @@ export default function ContactSelector({
           <p className="text-sm text-gray-500 mt-1">Add members to "{groupName}"</p>
         </div>
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              const newSelected = new Set(
-                filteredContacts.map(contact => contact.email)
-              );
-              setSelected(
-                selected.size === filteredContacts.length ? new Set() : newSelected
-              );
-            }}
-            className="text-sm text-[#1E1E3F] hover:text-[#2D2D5F] transition-colors"
-          >
-            {selected.size === filteredContacts.length ? 'Deselect All' : 'Select All'}
-          </button>
-          <span className="text-sm text-gray-600">
-            {selected.size} selected
-          </span>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => {
+                const currentDomain = filter.includes('@') ? filter.split('@')[1] : '';
+                setFilter(currentDomain ? '' : '@');
+              }}
+              className={`px-4 py-2 text-sm text-gray-700 ${
+                filter.includes('@') 
+                  ? 'bg-[#1E1E3F] text-white' 
+                  : 'bg-gray-100 hover:bg-gray-200'
+              } rounded-lg transition-colors`}
+            >
+              Same Domain
+            </button>
+            <button 
+              onClick={() => {
+                const newSelected = new Set([
+                  ...Array.from(selected),  // Keep existing selections
+                  ...filteredContacts.map(contact => contact.email)  // Add new filtered contacts
+                ]);
+                setSelected(
+                  selected.size === filteredContacts.length ? new Set() : newSelected
+                );
+              }}
+              className={`px-4 py-2 text-sm font-medium ${
+                selected.size === filteredContacts.length 
+                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                  : 'bg-[#1E1E3F] text-white hover:bg-[#2D2D5F]'
+              } rounded-lg transition-colors flex items-center gap-2`}
+            >
+              {selected.size === filteredContacts.length ? (
+                <>
+                  <span>Deselect All</span>
+                  <span className="text-xs">↩️</span>
+                </>
+              ) : (
+                <>
+                  <span>Select All</span>
+                  <span className="text-xs">✨</span>
+                </>
+              )}
+            </button>
+            <button 
+              onClick={() => {
+                setFilter('');
+                setSelected(new Set());
+              }}
+              className="px-4 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors ml-auto"
+            >
+              Clear All
+            </button>
+          </div>
         </div>
       </div>
 
@@ -98,19 +137,6 @@ export default function ContactSelector({
           <div className="flex gap-2">
             <button 
               onClick={() => {
-                const currentDomain = filter.includes('@') ? filter.split('@')[1] : '';
-                setFilter(currentDomain ? '' : '@');
-              }}
-              className={`px-4 py-2 text-sm text-gray-700 ${
-                filter.includes('@') 
-                  ? 'bg-[#1E1E3F] text-white' 
-                  : 'bg-gray-100 hover:bg-gray-200'
-              } rounded-lg transition-colors`}
-            >
-              Same Domain
-            </button>
-            <button 
-              onClick={() => {
                 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
                 const recentEmails = contacts
                   .filter(c => new Date(c.lastContacted) > thirtyDaysAgo)
@@ -120,15 +146,6 @@ export default function ContactSelector({
               className="px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
               Recent Contacts
-            </button>
-            <button 
-              onClick={() => {
-                setFilter('');
-                setSelected(new Set());
-              }}
-              className="px-4 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors ml-auto"
-            >
-              Clear All
             </button>
           </div>
         </div>
