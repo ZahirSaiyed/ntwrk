@@ -24,6 +24,8 @@ export interface Contact {
     };
   };
   customFields?: CustomField[];
+  tags?: string[];
+  notes?: string;
 }
 
 export type Group = {
