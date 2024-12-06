@@ -18,15 +18,26 @@ export default function RelationshipTimeline({ contacts, timeframe, isExpanded, 
     // Create array of dates
     for (let i = days; i >= 0; i--) {
       const date = subDays(new Date(), i);
-      const dateStr = date.toISOString();
+      // Set to start of day in UTC
+      const utcDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      const dateStr = utcDate.toISOString();
       
       // Count interactions for this date
       const dayInteractions = contacts.reduce((acc, contact) => {
         const dayContacts = new Set();
         contact.interactions.forEach(interaction => {
           const interactionDate = new Date(interaction.date);
-          if (format(interactionDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd')) {
-            if (interaction.type === 'sent') acc.sent++;
+          // Convert interaction date to UTC and set to start of day
+          const utcInteractionDate = new Date(Date.UTC(
+            interactionDate.getUTCFullYear(),
+            interactionDate.getUTCMonth(),
+            interactionDate.getUTCDate()
+          ));
+          
+          if (utcInteractionDate.getTime() === utcDate.getTime()) {
+            if (interaction.type === 'sent') {
+              acc.sent++;
+            }
             if (interaction.type === 'received') acc.received++;
             dayContacts.add(contact.email);
           }

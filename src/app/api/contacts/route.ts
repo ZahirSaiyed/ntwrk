@@ -51,6 +51,7 @@ export async function GET(
         date: string;
         type: 'sent' | 'received';
         threadId?: string;
+        participants?: string[];
       }>;
     }>();
 
@@ -136,8 +137,46 @@ export async function GET(
           const bccRecipients = processRecipients(bccHeader);
 
           // Process all recipients
+          const allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients]
+            .map(r => r.email)
+            .filter((email): email is string => {
+              if (!email || !session.user?.email) return false;
+              // Skip if recipient is the same as sender (case-insensitive)
+              return email.toLowerCase() !== session.user.email.toLowerCase();
+            });
+
+          if (allRecipients.length > 0 && session.user?.email) {
+            // Store the sent message in the sender's contact record
+            const senderEmail = session.user.email;
+            const senderContact = contactData.get(senderEmail.toLowerCase()) || {
+              name: session.user.name || senderEmail,
+              email: senderEmail.toLowerCase(),
+              lastContacted: date,
+              interactions: []
+            };
+
+            // Only store if we're actually sending to someone else
+            if (allRecipients.some(r => r.toLowerCase() !== senderEmail.toLowerCase())) {
+              senderContact.interactions.push({
+                date,
+                type: 'sent',
+                threadId: message.threadId || undefined,
+                participants: allRecipients
+              });
+
+              if (new Date(senderContact.lastContacted) < new Date(date)) {
+                senderContact.lastContacted = date;
+              }
+
+              contactData.set(senderEmail.toLowerCase(), senderContact);
+            }
+          }
+
+          // Also store the interaction for each recipient
           [...toRecipients, ...ccRecipients, ...bccRecipients].forEach(recipient => {
-            if (recipient.email && recipient.email !== session.user!.email) {
+            if (recipient.email && 
+                session.user?.email && 
+                recipient.email.toLowerCase() !== session.user.email.toLowerCase()) {
               emailAddresses.add(recipient.email);
               const existing = contactData.get(recipient.email.toLowerCase()) || {
                 name: recipient.name || recipient.email,
@@ -148,8 +187,9 @@ export async function GET(
 
               existing.interactions.push({
                 date,
-                type: 'sent',
-                threadId: message.threadId || undefined
+                type: 'received',
+                threadId: message.threadId || undefined,
+                participants: [session.user.email]
               });
 
               if (new Date(existing.lastContacted) < new Date(date)) {
