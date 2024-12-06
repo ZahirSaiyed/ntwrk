@@ -1,4 +1,5 @@
 import { Contact } from '@/types';
+import { EMAIL_PATTERNS } from '../components/insights/InboxCleanupAssistant';
 
 export interface SpamDetectionResult {
   isSpam: boolean;
@@ -10,21 +11,12 @@ export function analyzeContact(contact: Contact): SpamDetectionResult {
   const reasons: string[] = [];
   let spamScore = 0;
   
-  // 1. Email Pattern Analysis
-  const emailPatterns = {
-    noreply: ['noreply', 'no-reply', 'no.reply', 'donotreply'],
-    marketing: ['newsletter', 'marketing', 'notifications', 'updates', 'promotions', 'offers'],
-    automation: ['mailer.', 'mailchimp', 'sendgrid', 'campaign-', 'automated', 'autoresponder'],
-    suspicious: ['temp', 'spam', 'disposable', 'temporary']
-  };
-
-  // Check email patterns
-  Object.entries(emailPatterns).forEach(([category, patterns]) => {
-    if (patterns.some(pattern => contact.email.toLowerCase().includes(pattern))) {
-      reasons.push(`Detected ${category} email pattern`);
-      spamScore += 25;
-    }
-  });
+  // Use our comprehensive EMAIL_PATTERNS
+  const matches = matchesEmailPatterns(contact.email);
+  if (matches.length > 0) {
+    reasons.push(`Matches patterns: ${matches.join(', ')}`);
+    spamScore += 25 * matches.length; // Increase score for each matching category
+  }
 
   // 2. Interaction Pattern Analysis
   if (contact.interactions) {
@@ -74,4 +66,21 @@ export function analyzeContact(contact: Contact): SpamDetectionResult {
     reasons,
     confidence
   };
+} 
+
+function matchesEmailPatterns(email: string): string[] {
+  const matches: string[] = [];
+  
+  Object.entries(EMAIL_PATTERNS).forEach(([category, data]) => {
+    const hasMatch = data.patterns.some(pattern => {
+      const regex = new RegExp(pattern, 'i');
+      return regex.test(email);
+    });
+    
+    if (hasMatch) {
+      matches.push(data.title);
+    }
+  });
+  
+  return matches;
 } 

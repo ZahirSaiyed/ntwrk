@@ -27,6 +27,126 @@ interface ContactCategory {
   category: CategoryType;
 }
 
+// Define clear categories for better organization
+export const EMAIL_PATTERNS = {
+  marketing: {
+    title: 'Marketing & Promotions',
+    patterns: [
+      'promotions?',
+      'deals?',
+      'offer',
+      'sale',
+      'discount',
+      'store',
+      'shop',
+      'buy',
+      'special',
+      'promo',
+    ],
+    icon: '🏷️',
+  },
+  notifications: {
+    title: 'Notifications & Alerts',
+    patterns: [
+      'notification',
+      'alert(s)?',
+      'notify',
+      'update',
+      'status',
+      'reminder',
+      'confirm',
+      'notice',
+    ],
+    icon: '🔔',
+  },
+  newsletters: {
+    title: 'Newsletters & Updates',
+    patterns: [
+      'newsletter(s)?',
+      'news',
+      'weekly',
+      'monthly',
+      'digest',
+      'info',
+      'learn',
+      'list(s)?',
+      '^info@',
+      'subscribe',
+    ],
+    icon: '📰',
+  },
+  automated: {
+    title: 'Automated Messages',
+    patterns: [
+      'noreply',
+      'no-reply',
+      'do-not-reply',
+      'automated',
+      'system',
+      'mailer-daemon',
+      '^mail@',
+      '^email@',
+      '^donotreply@',
+      'notifications?@',
+    ],
+    icon: '🤖',
+  },
+  corporate: {
+    title: 'Corporate Communications',
+    patterns: [
+      'team',
+      'office',
+      'careers',
+      'hr',
+      'human-?resources',
+      'recruiting',
+      'talent',
+      '^hello@',
+      'company',
+    ],
+    icon: '🏢',
+  },
+  support: {
+    title: 'Customer Support',
+    patterns: [
+      'support',
+      'help',
+      'service',
+      'contact',
+      'feedback',
+      'survey',
+      'care',
+      'assist',
+      '^reviews?@',
+    ],
+    icon: '💬',
+  },
+  travel: {
+    title: 'Travel & Logistics',
+    patterns: [
+      'mileageplan',
+      'travel',
+      'flight',
+      'booking',
+      'reservation',
+      'itinerary',
+      'rewards?',
+    ],
+    icon: '✈️',
+  },
+  general: {
+    title: 'General Communications',
+    patterns: [
+      'calendar',
+      'events?',
+      'invite',
+      'rsvp',
+      'schedule',
+    ],
+    icon: '📅',
+  }
+}
+
 export default function InboxCleanupAssistant({ 
   contacts, 
   onMarkAsSpam, 
