@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { google } from 'googleapis';
+import { google, gmail_v1 } from 'googleapis';
 import { authOptions } from '@/lib/auth';
+
+interface MessageHeader {
+  name: string;
+  value: string;
+}
 
 export async function GET(
   request: Request
@@ -64,17 +69,17 @@ export async function GET(
         try {
           const messageDetails = await gmail.users.messages.get({
             userId: 'me',
-            id: message.id!,
+            id: message.id || '',
             format: 'metadata',
             metadataHeaders: ['From', 'To', 'Cc', 'Bcc', 'Date', 'References', 'In-Reply-To', 'Message-ID', 'Subject']
           });
 
-          const headers = messageDetails.data.payload?.headers;
-          const fromHeader = headers?.find(h => h.name === 'From')?.value;
-          const toHeader = headers?.find(h => h.name === 'To')?.value;
-          const ccHeader = headers?.find(h => h.name === 'Cc')?.value;
-          const bccHeader = headers?.find(h => h.name === 'Bcc')?.value;
-          const dateHeader = headers?.find(h => h.name === 'Date')?.value;
+          const headers = messageDetails.data.payload?.headers as MessageHeader[];
+          const fromHeader = headers?.find((h: MessageHeader) => h.name === 'From')?.value;
+          const toHeader = headers?.find((h: MessageHeader) => h.name === 'To')?.value;
+          const ccHeader = headers?.find((h: MessageHeader) => h.name === 'Cc')?.value;
+          const bccHeader = headers?.find((h: MessageHeader) => h.name === 'Bcc')?.value;
+          const dateHeader = headers?.find((h: MessageHeader) => h.name === 'Date')?.value;
 
           const extractEmailAndName = (header: string | undefined | null) => {
             if (!header) return { email: '', name: '' };

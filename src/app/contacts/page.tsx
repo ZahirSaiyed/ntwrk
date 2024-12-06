@@ -21,6 +21,7 @@ import ExportButton from '@/components/ExportButton';
 import { useRouter } from 'next/navigation';
 import OnboardingPrompt from '@/components/OnboardingPrompt';
 import InboxCleanupAssistant from '@/components/insights/InboxCleanupAssistant';
+import GroupExportModal from '@/components/GroupExportModal';
 
 // interface Contact {
 //   name: string;
@@ -67,10 +68,23 @@ const importContactsFunction = async () => {
 
 export default function ContactsPage() {
   const { data: session } = useSession();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [groups, setGroups] = useState<Array<{id: string, name: string, members: string[]}>>([]);
+  
+  const currentGroup = useMemo(() => {
+    if (filter.startsWith('group-')) {
+      const groupId = filter.replace('group-', '');
+      return groups.find(g => g.id === groupId);
+    }
+    return null;
+  }, [filter, groups]);
+
+  const [showGroupExportModal, setShowGroupExportModal] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ 
     key: 'lastContacted', 
     direction: 'desc' 
@@ -87,8 +101,6 @@ export default function ContactsPage() {
     'lastContacted'
   ]);
   const [customColumns, setCustomColumns] = useState<Column[]>([]);
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const [availableColumnsList, setAvailableColumnsList] = useState<Column[]>([]);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -489,7 +501,15 @@ export default function ContactsPage() {
                 </svg>
                 Create Group
               </button>
-              <ExportButton contacts={contacts} />
+              <button
+                onClick={() => setShowGroupExportModal(true)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {currentGroup ? 'Export Group' : 'Export Contacts'}
+              </button>
             </div>
           </div>
 
@@ -684,6 +704,17 @@ export default function ContactsPage() {
           onClose={() => setShowCleanupAssistant(false)}
         />
       )}
+
+      {/* Group Export Modal */}
+      <GroupExportModal
+        isOpen={showGroupExportModal}
+        onClose={() => setShowGroupExportModal(false)}
+        groupName={currentGroup?.name || 'All Contacts'}
+        contacts={currentGroup 
+          ? contacts.filter((contact: Contact) => currentGroup.members.includes(contact.email))
+          : contacts
+        }
+      />
     </AppLayout>
   );
 }
