@@ -63,11 +63,6 @@ export default function Home() {
           </div>
 
           <div className="text-center relative">
-            <div className="mb-4 inline-flex items-center bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium text-[#1E1E3F] border border-[#1E1E3F]/10 hover:scale-105 transition-transform cursor-default shadow-sm">
-              <span className="animate-pulse mr-2">✨</span>
-              <span>Your network deserves better</span>
-            </div>
-            
             <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-[#1E1E3F] mb-6 leading-tight">
               Your network,
               <br />

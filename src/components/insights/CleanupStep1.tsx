@@ -137,60 +137,44 @@ export default function CleanupStep1({
           </div>
         </motion.div>
 
-        {/* Contact Previews */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.7 }}
-          className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
-        >
-          <div className="p-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Sample Contacts</h3>
-            <p className="text-xs text-gray-500 mt-1">Examples of contacts that could be optimized</p>
-          </div>
-          <div className="max-h-[calc(100vh-26rem)] overflow-y-auto divide-y divide-gray-100">
-            {spamResults
-              .filter(r => r.result.confidence > 50)
-              .slice(0, 3)
-              .map((result, index) => (
-                <motion.div
-                  key={result.email}
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: 0.8 + index * 0.1 }}
-                  className="p-3 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{result.email}</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {result.result.reasons.slice(0, 2).map((reason, i) => (
-                          <span
-                            key={i}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                          >
-                            {reason}
-                          </span>
-                        ))}
-                        {result.result.reasons.length > 2 && (
-                          <span className="text-xs text-gray-500">
-                            +{result.result.reasons.length - 2} more
-                          </span>
-                        )}
+        {/* Right column - More compact Sample Contacts */}
+        <div className="col-span-7">
+          <div className="bg-white rounded-xl border border-gray-100 h-full">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h3 className="font-medium text-gray-900">Sample Contacts</h3>
+              <p className="text-sm text-gray-500 mt-0.5">Examples of contacts that could be optimized</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {spamResults
+                .filter(r => r.result.confidence > 50)
+                .slice(0, 3)
+                .map((result) => (
+                  <div key={result.email} className="px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-medium text-sm">
+                          {result.email.charAt(0).toUpperCase()}
+                        </div>
+                        <p className="text-sm font-medium text-gray-900">{result.email}</p>
                       </div>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span 
-                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
-                      >
+                      <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-medium">
                         {result.result.confidence}% match
                       </span>
                     </div>
+                    <div className="pl-10 mt-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.result.reasons.map((reason, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-gray-50 text-gray-600 rounded-md text-xs">
+                            {reason}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </motion.div>
-            ))}
+                ))}
+            </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Value Proposition */}
         <motion.div

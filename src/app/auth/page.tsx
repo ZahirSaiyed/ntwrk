@@ -15,7 +15,7 @@ export default function Auth() {
   }, []);
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/overview' });
+    signIn('google', { callbackUrl: '/contacts' });
   };
 
   return (
@@ -52,16 +52,6 @@ export default function Auth() {
 
           {/* Right Column - Sign In */}
           <div className="bg-white/50 backdrop-blur-sm rounded-2xl p-8 border border-[#1E1E3F]/10 shadow-sm">
-            {/* Privacy Badge */}
-            <div className="flex justify-center mb-6">
-              <div className={`flex items-center gap-2 px-4 py-1.5 bg-white rounded-full border border-[#1E1E3F]/10 shadow-sm transition-all duration-500 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}>
-                <svg className="w-4 h-4 text-[#1E1E3F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                <span className="text-sm font-medium text-[#1E1E3F]">Privacy Certified</span>
-              </div>
-            </div>
-
             {/* Sign In Options */}
             <div className="space-y-6">
               <button 
@@ -101,23 +91,13 @@ export default function Auth() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 opacity-40">
+              <div className="opacity-40">
                 <button 
                   disabled
                   className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white rounded-xl border border-[#1E1E3F]/10 cursor-not-allowed shadow-sm"
                 >
                   <Image src="/outlook-icon.svg" alt="Outlook" width={24} height={24} />
                   <span className="text-[#1E1E3F] font-medium">Outlook</span>
-                </button>
-
-                <button 
-                  disabled
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white rounded-xl border border-[#1E1E3F]/10 cursor-not-allowed shadow-sm"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                  <span className="text-[#1E1E3F] font-medium">CSV Import</span>
                 </button>
               </div>
             </div>

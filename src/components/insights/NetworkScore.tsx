@@ -6,7 +6,7 @@ import Tooltip from '@/components/Tooltip';
 interface Props {
   contacts: Contact[];
   className?: string;
-  onViewChange: (view: 'organize' | 'analyze') => void;
+  onViewChange?: (view: 'organize' | 'analyze') => void;
 }
 
 export default function NetworkScore({ contacts, className = '', onViewChange }: Props) {
@@ -69,28 +69,30 @@ export default function NetworkScore({ contacts, className = '', onViewChange }:
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-8 pt-6 border-t border-gray-100">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-gray-600">Suggested Actions</h4>
-          <button className="text-sm text-[#1E1E3F] hover:text-[#2D2D5F]">
-            View All →
-          </button>
+      {onViewChange && (
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-gray-600">Suggested Actions</h4>
+            <button className="text-sm text-[#1E1E3F] hover:text-[#2D2D5F]">
+              View All →
+            </button>
+          </div>
+          <div className="mt-4 flex gap-4">
+            <QuickAction
+              icon="👥"
+              label="Organize Network"
+              description="Discover and manage groups"
+              onClick={() => onViewChange('organize')}
+            />
+            <QuickAction
+              icon="📊"
+              label="Activity Timeline"
+              description="Track communication patterns over time"
+              onClick={() => onViewChange('analyze')}
+            />
+          </div>
         </div>
-        <div className="mt-4 flex gap-4">
-          <QuickAction
-            icon="👥"
-            label="Organize Network"
-            description="Discover and manage groups"
-            onClick={() => onViewChange('organize')}
-          />
-          <QuickAction
-            icon="📊"
-            label="Activity Timeline"
-            description="Track communication patterns over time"
-            onClick={() => onViewChange('analyze')}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 }

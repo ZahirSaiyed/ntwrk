@@ -3,7 +3,7 @@
 import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from "next-auth/react";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import GroupFAB from "@/components/GroupFAB";
 import GroupModal from "@/components/GroupModal";
@@ -22,6 +22,9 @@ import { useRouter } from 'next/navigation';
 import OnboardingPrompt from '@/components/OnboardingPrompt';
 import InboxCleanupAssistant from '@/components/insights/InboxCleanupAssistant';
 import GroupExportModal from '@/components/GroupExportModal';
+import NetworkScore from '@/components/insights/NetworkScore';
+import ImportModal from '@/components/ImportModal';
+import { toast } from 'react-hot-toast';
 
 // interface Contact {
 //   name: string;
@@ -91,7 +94,7 @@ export default function ContactsPage() {
   });
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [lastDeletedGroup, setLastDeletedGroup] = useState<{id: string, name: string, members: string[]} | null>(null);
   const [editingGroup, setEditingGroup] = useState<{id: string, name: string, members: string[]} | null>(null);
   const [activeColumns, setActiveColumns] = useState<ColumnKey[]>([
@@ -105,6 +108,7 @@ export default function ContactsPage() {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showCleanupAssistant, setShowCleanupAssistant] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const importContactsMutation = useMutation({
     mutationFn: importContactsFunction,
@@ -293,19 +297,35 @@ export default function ContactsPage() {
     }
   }, [router]);
 
+  // Memoize the custom fields processing
+  const customFieldsData = useMemo(() => {
+    if (!contacts?.length) return [];
+    
+    const firstContactWithFields = contacts.find((contact: Contact) => 
+      contact.customFields && contact.customFields.length > 0
+    );
+    
+    if (!firstContactWithFields?.customFields) return [];
+    
+    return firstContactWithFields.customFields.map((field: CustomField) => 
+      `custom_${field.label.toLowerCase().replace(/\s+/g, '_')}` as ColumnKey
+    );
+  }, [contacts]);
+
+  // Memoize the column update function
+  const updateColumns = useCallback((customFields: ColumnKey[]) => {
+    setActiveColumns(prev => {
+      const newFields = customFields.filter(key => !prev.includes(key));
+      return newFields.length > 0 ? [...prev, ...newFields] : prev;
+    });
+  }, []);
+
+  // Use effect with memoized values
   useEffect(() => {
-    if (contacts[0]?.customFields) {
-      const customFieldKeys = contacts[0].customFields.map((field: CustomField) => 
-        `custom_${field.label.toLowerCase().replace(/\s+/g, '_')}` as ColumnKey
-      );
-      
-      // Only update if there are new fields not already in activeColumns
-      const newFields = customFieldKeys.filter((key: string) => !activeColumns.includes(key as ColumnKey));
-      if (newFields.length > 0) {
-        setActiveColumns(prev => [...prev, ...(newFields as ColumnKey[])]);
-      }
+    if (customFieldsData.length > 0) {
+      updateColumns(customFieldsData);
     }
-  }, [contacts, activeColumns]);
+  }, [customFieldsData, updateColumns]);
 
   const updateContactMutation = useMutation({
     mutationFn: async (updatedContact: Contact) => {
@@ -333,6 +353,37 @@ export default function ContactsPage() {
       });
     },
   });
+
+  const handleImportComplete = useCallback((newContacts: Contact[]) => {
+    queryClient.setQueryData(['contacts', session?.user?.email], (oldData: Contact[] | undefined) => {
+      if (!oldData) return newContacts;
+      
+      // Filter out any contacts that are marked as spam
+      const nonSpamContacts = oldData.filter(contact => !(contact as any).isSpam);
+      
+      // Create a Set of existing email addresses (case-insensitive)
+      const existingEmails = new Set(nonSpamContacts.map(c => c.email.toLowerCase()));
+      
+      // Only add new contacts that don't exist in the current list
+      const uniqueNewContacts = newContacts.filter(
+        contact => !existingEmails.has(contact.email.toLowerCase())
+      );
+      
+      return [...nonSpamContacts, ...uniqueNewContacts];
+    });
+  }, [queryClient, session?.user?.email]);
+
+  const handleContactUpdate = async (updatedContact: Contact): Promise<void> => {
+    try {
+      await updateContactMutation.mutate(updatedContact);
+    } catch (error) {
+      console.error('Failed to update contact:', error);
+    }
+  };
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    toast[type](message);
+  };
 
   if (isLoading) {
     return (
@@ -502,6 +553,15 @@ export default function ContactsPage() {
                 Create Group
               </button>
               <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import CSV
+              </button>
+              <button
                 onClick={() => setShowGroupExportModal(true)}
                 className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
               >
@@ -630,12 +690,17 @@ export default function ContactsPage() {
           <ContactTable 
             contacts={filteredContacts}
             onContactClick={setSelectedContact}
+            onContactUpdate={handleContactUpdate}
             currentPage={currentPage}
             itemsPerPage={itemsPerPage}
             columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
             className="divide-y divide-gray-100"
             sortConfig={sortConfig}
             onSort={handleSort}
+            showToast={showToast}
+            totalContacts={filteredContacts.length}
+            onPageChange={(page) => setCurrentPage(page)}
+            onPageSizeChange={(size) => setItemsPerPage(size)}
           />
           <Pagination
             currentPage={currentPage}
@@ -712,8 +777,14 @@ export default function ContactsPage() {
         groupName={currentGroup?.name || 'All Contacts'}
         contacts={currentGroup 
           ? contacts.filter((contact: Contact) => currentGroup.members.includes(contact.email))
-          : contacts
+          : filteredContacts
         }
+      />
+
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={handleImportComplete}
       />
     </AppLayout>
   );

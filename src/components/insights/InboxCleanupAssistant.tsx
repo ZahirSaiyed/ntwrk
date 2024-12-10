@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Contact } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Switch } from '@headlessui/react';
@@ -6,6 +6,10 @@ import { analyzeContact, SpamDetectionResult } from '../../utils/spamDetection';
 import CleanupStep1 from './CleanupStep1';
 import CleanupStep2 from './CleanupStep2';
 import CleanupStep3 from './CleanupStep3';
+
+interface ContactWithSpam extends Contact {
+  isSpam?: boolean;
+}
 
 interface InboxCleanupAssistantProps {
   contacts: Contact[];
@@ -180,6 +184,16 @@ export default function InboxCleanupAssistant({
   const [lastMarked, setLastMarked] = useState<string>('');
   const [spamContacts, setSpamContacts] = useState<Set<string>>(new Set());
   const [categorizedContacts, setCategorizedContacts] = useState<ContactCategory[]>([]);
+  const [spamEmails, setSpamEmails] = useState<Set<string>>(new Set());
+
+  // Memoize the filtered contacts to prevent infinite loops
+  const contactsToProcess = useMemo(() => 
+    contacts.filter(contact => 
+      !(contact as ContactWithSpam).isSpam && 
+      !spamEmails.has(contact.email)
+    ), 
+    [contacts, spamEmails]
+  );
 
   useEffect(() => {
     const analyzed = contacts
@@ -221,6 +235,15 @@ export default function InboxCleanupAssistant({
     }
     onClose();
   };
+
+  const handleMarkAsSpam = useCallback((emails: string[]) => {
+    setSpamEmails(prev => {
+      const newSet = new Set(prev);
+      emails.forEach(email => newSet.add(email));
+      return newSet;
+    });
+    onMarkAsSpam(emails);
+  }, [onMarkAsSpam]);
 
   const renderStep = () => {
     switch (currentStep) {
