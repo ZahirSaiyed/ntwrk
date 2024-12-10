@@ -190,6 +190,14 @@ export default function ContactTable({
   onPageSizeChange,
   totalContacts,
 }: ContactTableProps) {
+  const safeColumns = columns?.length > 0 ? columns : [
+    {
+      key: 'name',
+      label: 'Name',
+      render: (contact: Contact) => contact.name || '-'
+    }
+  ];
+
   const [editingCell, setEditingCell] = useState<{
     contactId: string;
     field: string;
@@ -247,7 +255,7 @@ export default function ContactTable({
   const handleTableKeyDown = (e: React.KeyboardEvent, contact: Contact, field: string) => {
     if (!editingCell) {
       const currentRowIndex = contacts.findIndex(c => c.email === contact.email);
-      const currentColIndex = columns.findIndex(col => col.key === field);
+      const currentColIndex = safeColumns.findIndex(col => col.key === field);
 
       // Add page navigation shortcuts
       if (e.ctrlKey || e.metaKey) {
@@ -289,13 +297,13 @@ export default function ContactTable({
         case 'ArrowLeft':
           e.preventDefault();
           if (currentColIndex > 0) {
-            setFocusedCell({ contactId: contact.email, field: columns[currentColIndex - 1].key });
+            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex - 1].key });
           }
           break;
         case 'ArrowRight':
           e.preventDefault();
-          if (currentColIndex < columns.length - 1) {
-            setFocusedCell({ contactId: contact.email, field: columns[currentColIndex + 1].key });
+          if (currentColIndex < safeColumns.length - 1) {
+            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex + 1].key });
           }
           break;
         case 'Enter':
@@ -318,7 +326,7 @@ export default function ContactTable({
       tableRef.current?.focus();
     }
     const currentRowIndex = contacts.findIndex(c => c.email === contact.email);
-    const currentColIndex = columns.findIndex(col => col.key === editingCell?.field);
+    const currentColIndex = safeColumns.findIndex(col => col.key === editingCell?.field);
 
     switch (e.key) {
       case 'Enter':
@@ -347,24 +355,24 @@ export default function ContactTable({
         if (e.shiftKey) {
           // Move left
           if (currentColIndex > 0) {
-            setFocusedCell({ contactId: contact.email, field: columns[currentColIndex - 1].key });
-            handleDoubleClick(contact, columns[currentColIndex - 1].key);
+            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex - 1].key });
+            handleDoubleClick(contact, safeColumns[currentColIndex - 1].key);
           } else if (currentRowIndex > 0) {
             // Move to end of previous row
             const prevContact = contacts[currentRowIndex - 1];
-            setFocusedCell({ contactId: prevContact.email, field: columns[columns.length - 1].key });
-            handleDoubleClick(prevContact, columns[columns.length - 1].key);
+            setFocusedCell({ contactId: prevContact.email, field: safeColumns[safeColumns.length - 1].key });
+            handleDoubleClick(prevContact, safeColumns[safeColumns.length - 1].key);
           }
         } else {
           // Move right
-          if (currentColIndex < columns.length - 1) {
-            setFocusedCell({ contactId: contact.email, field: columns[currentColIndex + 1].key });
-            handleDoubleClick(contact, columns[currentColIndex + 1].key);
+          if (currentColIndex < safeColumns.length - 1) {
+            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex + 1].key });
+            handleDoubleClick(contact, safeColumns[currentColIndex + 1].key);
           } else if (currentRowIndex < contacts.length - 1) {
             // Move to start of next row
             const nextContact = contacts[currentRowIndex + 1];
-            setFocusedCell({ contactId: nextContact.email, field: columns[0].key });
-            handleDoubleClick(nextContact, columns[0].key);
+            setFocusedCell({ contactId: nextContact.email, field: safeColumns[0].key });
+            handleDoubleClick(nextContact, safeColumns[0].key);
           }
         }
         break;
@@ -483,7 +491,7 @@ export default function ContactTable({
     if (!focusedCell) return;
     
     const newSelected = new Set(state.selectedCells);
-    columns.forEach(column => {
+    safeColumns.forEach(column => {
       newSelected.add(`${focusedCell.contactId}:${column.key}`);
     });
     
@@ -527,7 +535,7 @@ export default function ContactTable({
         <table className={`w-full ${className}`}>
           <thead>
             <tr className="bg-[#F4F4FF]">
-              {columns.map((column) => (
+              {safeColumns.map((column) => (
                 <th
                   key={column.key}
                   className="px-6 py-4 text-left text-sm font-medium text-gray-900 cursor-pointer group"
@@ -556,10 +564,10 @@ export default function ContactTable({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className={`hover:bg-gray-50 transition-colors
-                  ${state.selectedCells.has(`${contact.email}:${columns[0].key}`) ? 'bg-[#F4F4FF]' : ''}
+                  ${state.selectedCells.has(`${contact.email}:${safeColumns[0].key}`) ? 'bg-[#F4F4FF]' : ''}
                 `}
               >
-                {columns.map((column) => (
+                {safeColumns.map((column) => (
                   <td
                     key={column.key}
                     className={`
