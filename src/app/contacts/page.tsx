@@ -70,8 +70,8 @@ const importContactsFunction = async () => {
 };
 
 export default function ContactsPage() {
-  const { data: session } = useSession();
   const router = useRouter();
+  const { data: session } = useSession();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
@@ -289,13 +289,6 @@ export default function ContactsPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, filter]);
-
-  useEffect(() => {
-    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome');
-    if (!hasSeenWelcome) {
-      router.push('/welcome');
-    }
-  }, [router]);
 
   // Memoize the custom fields processing
   const customFieldsData = useMemo(() => {
