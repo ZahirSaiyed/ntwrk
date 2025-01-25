@@ -12,6 +12,7 @@ import RelationshipTimeline from '@/components/insights/RelationshipTimeline';
 import SmartInsights from '@/components/insights/SmartInsights';
 import OutcomeSelector from '@/components/insights/OutcomeSelector';
 import NetworkMap from '@/components/insights/NetworkMap';
+import NetworkPieChart from '@/components/insights/NetworkPieChart';
 import { motion } from 'framer-motion';
 
 export default function InsightsPage() {
@@ -50,10 +51,13 @@ export default function InsightsPage() {
             />
             
             {currentView === 'organize' ? (
-              <SmartInsights 
-                contacts={contacts}
-                onGroupCreate={() => {}}
-              />
+              <>
+                <NetworkPieChart contacts={contacts} />
+                <SmartInsights 
+                  contacts={contacts}
+                  onGroupCreate={() => {}}
+                />
+              </>
             ) : (
               <RelationshipTimeline
                 contacts={contacts}
