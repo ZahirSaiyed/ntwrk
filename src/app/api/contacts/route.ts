@@ -103,33 +103,50 @@ const USER_PROMPT_TEMPLATE = (companies: { name: string, domain: string }[]) => 
   ).join('\n');
 };
 
+let isRateLimited = false;
+
 const detectIndustry = async (companies: { name: string, domain: string }[]): Promise<{ [key: string]: string }> => {
+  if (isRateLimited) {
+    return {};
+  }
+
   try {
     const results: { [key: string]: string } = {};
     
-    // Process in batches of 20 for cost efficiency
     const BATCH_SIZE = 20;
     
     for (let i = 0; i < companies.length; i += BATCH_SIZE) {
+      if (isRateLimited) {
+        break;
+      }
+
       const batch = companies.slice(i, i + BATCH_SIZE);
       
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: USER_PROMPT_TEMPLATE(batch) }
-        ],
-        temperature: 0.1,
-        max_tokens: 100,
-      });
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: USER_PROMPT_TEMPLATE(batch) }
+          ],
+          temperature: 0.1,
+          max_tokens: 100,
+        });
 
-      const industries = completion.choices[0]?.message?.content?.split('\n') || [];
-      
-      // Map results back to companies
-      batch.forEach((company, index) => {
-        const key = `${company.name}|${company.domain}`;
-        results[key] = industries[index]?.trim() || 'Unknown';
-      });
+        const industries = completion.choices[0]?.message?.content?.split('\n') || [];
+        
+        batch.forEach((company, index) => {
+          const key = `${company.name}|${company.domain}`;
+          results[key] = industries[index]?.trim() || 'Unknown';
+        });
+      } catch (error: any) {
+        if (error?.message?.includes('Rate limit reached')) {
+          console.warn('OpenAI rate limit reached, skipping remaining industry detection');
+          isRateLimited = true;
+          break;
+        }
+        console.error('Error processing batch:', error);
+      }
     }
 
     return results;
@@ -421,7 +438,7 @@ export async function GET(
         domain: contact.email.split('@')[1]
       }));
 
-    if (companiesForIndustryDetection.length > 0) {
+    if (companiesForIndustryDetection.length > 0 && !isRateLimited) {
       const industries = await detectIndustry(companiesForIndustryDetection);
       
       // Update contact data with detected industries
@@ -431,6 +448,13 @@ export async function GET(
           contact.industry = industries[key] || '';
         }
       });
+    }
+
+    // Reset rate limit flag after some time (e.g., 24 hours)
+    if (isRateLimited) {
+      setTimeout(() => {
+        isRateLimited = false;
+      }, 24 * 60 * 60 * 1000); // 24 hours
     }
 
     const contacts = Array.from(contactData.values()).map(contact => ({

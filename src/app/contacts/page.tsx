@@ -141,53 +141,80 @@ export default function ContactsPage() {
     !(contact as ContactWithSpam).isSpam
   );
 
-  const availableColumns = useMemo(() => [
-    {
-      key: 'name' as ColumnKey,
-      label: 'Name',
-      description: 'Contact\'s full name',
-      render: (contact: Contact) => contact.name
-    },
-    {
-      key: 'email' as ColumnKey,
-      label: 'Email',
-      description: 'Primary email address',
-      render: (contact: Contact) => contact.email
-    },
-    {
-      key: 'lastContacted' as ColumnKey,
-      label: 'Last Contacted',
-      description: 'Most recent interaction date',
-      render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
-    },
-    {
-      key: 'company' as ColumnKey,
-      label: 'Company',
-      description: 'Current organization',
-      render: (contact: Contact) => contact.company || '-'
-    },
-    {
-      key: 'industry' as ColumnKey,
-      label: 'Industry',
-      description: 'Company industry',
-      render: (contact: Contact) => contact.industry || '-'
-    },
-    ...(contacts[0]?.customFields?.map((field: CustomField) => ({
-      key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
-      label: field.label,
-      description: `Custom field: ${field.label}`,
-      render: (contact: Contact) => {
-        const customField = contact.customFields?.find(f => 
-          f.label.toLowerCase().replace(/\s+/g, '_') === field.label.toLowerCase().replace(/\s+/g, '_')
-        );
-        return customField?.value || '-';
+  useEffect(() => {
+    if (contacts?.length) {
+      const columns = [
+        {
+          key: 'name' as ColumnKey,
+          label: 'Name',
+          description: 'Contact\'s full name',
+          render: (contact: Contact) => contact.name
+        },
+        {
+          key: 'email' as ColumnKey,
+          label: 'Email',
+          description: 'Primary email address',
+          render: (contact: Contact) => contact.email
+        },
+        {
+          key: 'lastContacted' as ColumnKey,
+          label: 'Last Contacted',
+          description: 'Most recent interaction date',
+          render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
+        },
+        {
+          key: 'company' as ColumnKey,
+          label: 'Company',
+          description: 'Current organization',
+          render: (contact: Contact) => contact.company || '-'
+        },
+        {
+          key: 'industry' as ColumnKey,
+          label: 'Industry',
+          description: 'Company industry',
+          render: (contact: Contact) => contact.industry || '-'
+        },
+      ];
+
+      // Add custom fields if they exist
+      const firstContactWithFields = contacts.find((contact: Contact) => 
+        contact.customFields && contact.customFields.length > 0
+      );
+
+      if (firstContactWithFields?.customFields) {
+        const customFields = firstContactWithFields.customFields.map((field: CustomField) => ({
+          key: `custom_${field.label.toLowerCase().replace(/\s+/g, '_')}` as ColumnKey,
+          label: field.label,
+          description: `Custom field: ${field.label}`,
+          render: (contact: Contact) => {
+            const customField = contact.customFields?.find(f => 
+              f.label.toLowerCase().replace(/\s+/g, '_') === field.label.toLowerCase().replace(/\s+/g, '_')
+            );
+            return customField?.value || '-';
+          }
+        }));
+        
+        columns.push(...customFields);
       }
-    })) || [])
-  ], [contacts]);
+
+      setAvailableColumnsList(columns);
+    }
+  }, [contacts]);
 
   useEffect(() => {
-    setAvailableColumnsList(availableColumns);
-  }, [availableColumns]);
+    if (contacts?.length) {
+      const customFieldKeys = contacts[0]?.customFields?.map((field: CustomField) => 
+        `custom_${field.label.toLowerCase().replace(/\s+/g, '_')}` as ColumnKey
+      ) || [];
+
+      if (customFieldKeys.length > 0) {
+        setActiveColumns(prev => {
+          const newFields = customFieldKeys.filter((key: ColumnKey) => !prev.includes(key));
+          return newFields.length > 0 ? [...prev, ...newFields] : prev;
+        });
+      }
+    }
+  }, [contacts]);
 
   useEffect(() => {
     // Load groups from localStorage on mount
@@ -284,7 +311,10 @@ export default function ContactsPage() {
     return filteredResults;
   };
 
-  const filteredContacts = getFilteredContacts(contacts, search, filter);
+  const filteredContacts = useMemo(() => 
+    getFilteredContacts(contacts, search, filter),
+    [contacts, search, filter, getFilteredContacts]
+  );
 
   const handleSort = (key: keyof Contact | CustomColumnKey) => {
     setSortConfig(prevConfig => {
@@ -299,36 +329,6 @@ export default function ContactsPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, filter]);
-
-  // Memoize the custom fields processing
-  const customFieldsData = useMemo(() => {
-    if (!contacts?.length) return [];
-    
-    const firstContactWithFields = contacts.find((contact: Contact) => 
-      contact.customFields && contact.customFields.length > 0
-    );
-    
-    if (!firstContactWithFields?.customFields) return [];
-    
-    return firstContactWithFields.customFields.map((field: CustomField) => 
-      `custom_${field.label.toLowerCase().replace(/\s+/g, '_')}` as ColumnKey
-    );
-  }, [contacts]);
-
-  // Memoize the column update function
-  const updateColumns = useCallback((customFields: ColumnKey[]) => {
-    setActiveColumns(prev => {
-      const newFields = customFields.filter(key => !prev.includes(key));
-      return newFields.length > 0 ? [...prev, ...newFields] : prev;
-    });
-  }, []);
-
-  // Use effect with memoized values
-  useEffect(() => {
-    if (customFieldsData.length > 0) {
-      updateColumns(customFieldsData);
-    }
-  }, [customFieldsData, updateColumns]);
 
   const updateContactMutation = useMutation({
     mutationFn: async (updatedContact: Contact) => {
