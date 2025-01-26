@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic'
+
 import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';

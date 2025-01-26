@@ -1,5 +1,5 @@
-import { Contact } from '@/types';
-import { useState, useRef, useEffect } from 'react';
+import { Contact, CustomField } from '@/types';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { format, isValid, parseISO } from 'date-fns';
 import { motion } from 'framer-motion';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -33,6 +33,9 @@ type Column = {
   label: string;
   render: (contact: Contact) => React.ReactNode;
 };
+
+type CustomColumnKey = `custom_${string}`;
+type ColumnKey = keyof Contact | 'relationshipStrength' | CustomColumnKey;
 
 const formatDate = (dateString: string) => {
   try {
@@ -175,6 +178,11 @@ const PageSizeControl = ({
   </div>
 );
 
+type FocusedCell = {
+  contactId: string;
+  field: string;
+} | null;
+
 export default function ContactTable({
   contacts,
   columns,
@@ -215,7 +223,13 @@ export default function ContactTable({
     selectedCells: new Set(),
     copiedCells: new Map()
   });
-  
+
+  // Add new state for active cell
+  const [activeCell, setActiveCell] = useState<{
+    contactId: string;
+    field: string;
+  } | null>(null);
+
   const { past, present, future, undo, redo, saveState } = useUndo(contacts);
 
   // Hotkey setup for common actions
@@ -254,7 +268,9 @@ export default function ContactTable({
 
   const handleTableKeyDown = (e: React.KeyboardEvent, contact: Contact, field: string) => {
     if (!editingCell) {
-      const currentRowIndex = contacts.findIndex(c => c.email === contact.email);
+      const currentRowIndex = contacts.findIndex(
+        c => getContactIdentifier(c) === getContactIdentifier(contact)
+      );
       const currentColIndex = safeColumns.findIndex(col => col.key === field);
 
       // Add page navigation shortcuts
@@ -278,38 +294,125 @@ export default function ContactTable({
         return;
       }
 
-      // Existing arrow key navigation...
+      // Handle arrow key navigation
+      let newFocusedCell: FocusedCell = null;
+
+      // Handle shift + arrow key selection
+      if (e.shiftKey && activeCell) {
+        e.preventDefault();
+        
+        switch (e.key) {
+          case 'ArrowUp':
+            if (currentRowIndex > 0) {
+              const prevContact = contacts[currentRowIndex - 1];
+              newFocusedCell = { 
+                contactId: getContactIdentifier(prevContact), 
+                field 
+              };
+            }
+            break;
+          case 'ArrowDown':
+            if (currentRowIndex < contacts.length - 1) {
+              const nextContact = contacts[currentRowIndex + 1];
+              newFocusedCell = { 
+                contactId: getContactIdentifier(nextContact), 
+                field 
+              };
+            }
+            break;
+          case 'ArrowLeft':
+            if (currentColIndex > 0) {
+              newFocusedCell = { 
+                contactId: getContactIdentifier(contact), 
+                field: safeColumns[currentColIndex - 1].key 
+              };
+            }
+            break;
+          case 'ArrowRight':
+            if (currentColIndex < safeColumns.length - 1) {
+              newFocusedCell = { 
+                contactId: getContactIdentifier(contact), 
+                field: safeColumns[currentColIndex + 1].key 
+              };
+            }
+            break;
+        }
+
+        if (newFocusedCell) {
+          setFocusedCell(newFocusedCell);
+          
+          // Add the new cell to existing selection
+          const newSelected = new Set(state.selectedCells);
+          newSelected.add(createCellId(
+            contacts.find(c => getContactIdentifier(c) === newFocusedCell!.contactId),
+            newFocusedCell!.field
+          ));
+          setState(prev => ({
+            ...prev,
+            selectedCells: newSelected
+          }));
+        }
+        return;
+      }
+
+      // Regular arrow navigation (no shift key)
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault();
           if (currentRowIndex > 0) {
             const prevContact = contacts[currentRowIndex - 1];
-            setFocusedCell({ contactId: prevContact.email, field });
+            newFocusedCell = { 
+              contactId: getContactIdentifier(prevContact), 
+              field 
+            };
           }
           break;
         case 'ArrowDown':
           e.preventDefault();
           if (currentRowIndex < contacts.length - 1) {
             const nextContact = contacts[currentRowIndex + 1];
-            setFocusedCell({ contactId: nextContact.email, field });
+            newFocusedCell = { 
+              contactId: getContactIdentifier(nextContact), 
+              field 
+            };
           }
           break;
         case 'ArrowLeft':
           e.preventDefault();
           if (currentColIndex > 0) {
-            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex - 1].key });
+            newFocusedCell = { 
+              contactId: getContactIdentifier(contact), 
+              field: safeColumns[currentColIndex - 1].key 
+            };
           }
           break;
         case 'ArrowRight':
           e.preventDefault();
           if (currentColIndex < safeColumns.length - 1) {
-            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex + 1].key });
+            newFocusedCell = { 
+              contactId: getContactIdentifier(contact), 
+              field: safeColumns[currentColIndex + 1].key 
+            };
           }
           break;
         case 'Enter':
           e.preventDefault();
           handleDoubleClick(contact, field);
           break;
+      }
+
+      // Update focus and selection if we have a new cell
+      if (newFocusedCell) {
+        setFocusedCell(newFocusedCell);
+        setActiveCell(newFocusedCell);
+        
+        setState(prev => ({
+          ...prev,
+          selectedCells: new Set([createCellId(
+            contacts.find(c => getContactIdentifier(c) === newFocusedCell!.contactId),
+            newFocusedCell!.field
+          )])
+        }));
       }
     }
   };
@@ -501,6 +604,140 @@ export default function ContactTable({
     }));
   };
 
+  const availableColumns = useMemo(() => [
+    {
+      key: 'name' as ColumnKey,
+      label: 'Name',
+      description: 'Contact\'s full name',
+      render: (contact: Contact) => contact.name
+    },
+    {
+      key: 'email' as ColumnKey,
+      label: 'Email',
+      description: 'Primary email address',
+      render: (contact: Contact) => contact.email
+    },
+    {
+      key: 'company' as ColumnKey,
+      label: 'Company',
+      description: 'Current organization',
+      render: (contact: Contact) => contact.company || '-'
+    },
+    {
+      key: 'industry' as ColumnKey,
+      label: 'Industry',
+      description: 'Company industry',
+      render: (contact: Contact) => contact.industry || '-'
+    },
+    {
+      key: 'lastContacted' as ColumnKey,
+      label: 'Last Contacted',
+      description: 'Most recent interaction date',
+      render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
+    },
+    ...(contacts[0]?.customFields?.map((field: CustomField) => ({
+      key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
+      label: field.label,
+      description: `Custom field: ${field.label}`,
+      render: (contact: Contact) => {
+        const customField = contact.customFields?.find(f => 
+          f.label.toLowerCase().replace(/\s+/g, '_') === field.label.toLowerCase().replace(/\s+/g, '_')
+        );
+        return customField?.value || '-';
+      }
+    })) || [])
+  ], [contacts]);
+
+  // Make the function more defensive with null checks
+  const getContactIdentifier = (contact: Contact | undefined): string => {
+    if (!contact) {
+      return 'unknown';
+    }
+
+    // First try email
+    if (contact.email?.trim()) {
+      return contact.email.trim();
+    }
+
+    // Fallback to combination of other fields, with null checks
+    const name = contact.name || 'unnamed';
+    const company = contact.company || 'nocompany';
+    const date = contact.lastContacted || new Date().toISOString();
+
+    return `${name}_${company}_${date}`.trim().replace(/\s+/g, '_');
+  };
+
+  // Update createCellId to handle potential undefined contact
+  const createCellId = (contact: Contact | undefined, columnKey: string): string => {
+    const identifier = getContactIdentifier(contact);
+    return `${identifier}:${columnKey}`;
+  };
+
+  // Update handleCellClick with null checks
+  const handleCellClick = (e: React.MouseEvent, contact: Contact, column: Column) => {
+    if (!contact) return;
+    
+    e.stopPropagation();
+    
+    const cellId = createCellId(contact, column.key);
+    const newFocusedCell = { 
+      contactId: getContactIdentifier(contact), 
+      field: column.key 
+    };
+    
+    setFocusedCell(newFocusedCell);
+    setActiveCell(newFocusedCell);
+    
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      setState(prev => ({
+        ...prev,
+        selectedCells: new Set([cellId])
+      }));
+      return;
+    }
+    
+    if (e.shiftKey && activeCell) {
+      const startIndex = contacts.findIndex(c => getContactIdentifier(c) === activeCell.contactId);
+      const endIndex = contacts.findIndex(c => getContactIdentifier(c) === getContactIdentifier(contact));
+      const startColIndex = safeColumns.findIndex(col => col.key === activeCell.field);
+      const endColIndex = safeColumns.findIndex(col => col.key === column.key);
+      
+      const newSelected = new Set<string>();
+      for (let i = Math.min(startIndex, endIndex); i <= Math.max(startIndex, endIndex); i++) {
+        for (let j = Math.min(startColIndex, endColIndex); j <= Math.max(startColIndex, endColIndex); j++) {
+          const currentContact = contacts[i];
+          if (currentContact) {
+            newSelected.add(createCellId(currentContact, safeColumns[j].key));
+          }
+        }
+      }
+      
+      setState(prev => ({
+        ...prev,
+        selectedCells: newSelected
+      }));
+    }
+    
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      const newSelected = new Set(state.selectedCells);
+      if (newSelected.has(cellId)) {
+        newSelected.delete(cellId);
+      } else {
+        newSelected.add(cellId);
+      }
+      setState(prev => ({ ...prev, selectedCells: newSelected }));
+    }
+    
+    tableRef.current?.focus();
+  };
+
+  const cleanEmail = (email: string) => {
+    return email
+      .trim()
+      .replace(/\s+/g, ' ')    // Normalize whitespace
+      .replace(/[\u200B-\u200D\uFEFF]/g, ''); // Remove zero-width spaces
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center px-6 py-3 border-b bg-gray-50/50">
@@ -519,9 +756,8 @@ export default function ContactTable({
         className="relative overflow-x-auto outline-none focus:ring-2 focus:ring-blue-100 rounded-lg"
         tabIndex={0}
         onKeyDown={(e) => {
-          // Always handle keyboard navigation if we have a focused cell
           if (focusedCell) {
-            const contact = contacts.find(c => c.email === focusedCell.contactId);
+            const contact = contacts.find(c => getContactIdentifier(c) === focusedCell.contactId);
             if (contact) {
               if (editingCell) {
                 handleEditKeyDown(e, contact);
@@ -532,13 +768,13 @@ export default function ContactTable({
           }
         }}
       >
-        <table className={`w-full ${className}`}>
+        <table className={`w-full ${className} border-separate border-spacing-0`}>
           <thead>
             <tr className="bg-[#F4F4FF]">
               {safeColumns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-6 py-4 text-left text-sm font-medium text-gray-900 cursor-pointer group"
+                  className="px-6 py-4 text-left text-sm font-medium text-gray-900 cursor-pointer group sticky top-0 bg-[#F4F4FF] z-10"
                   onClick={() => onSort(column.key as keyof Contact | `custom_${string}`)}
                 >
                   <div className="flex items-center gap-2">
@@ -558,60 +794,63 @@ export default function ContactTable({
             </tr>
           </thead>
           <tbody>
-            {paginatedContacts.map((contact) => (
+            {paginatedContacts.map((contact, rowIndex) => (
               <motion.tr
-                key={contact.email}
+                key={contact.email || `row-${rowIndex}-${contact.name?.replace(/\s+/g, '-')}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className={`hover:bg-gray-50 transition-colors
-                  ${state.selectedCells.has(`${contact.email}:${safeColumns[0].key}`) ? 'bg-[#F4F4FF]' : ''}
-                `}
+                className="group/row"
               >
-                {safeColumns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={`
-                      px-6 py-4 text-sm text-gray-600
-                      group relative cursor-text
-                      transition-all duration-150
-                      ${editingCell?.contactId === contact.email && editingCell?.field === column.key 
-                        ? 'z-10' 
-                        : ''}
-                      ${focusedCell?.contactId === contact.email && focusedCell?.field === column.key 
-                        ? 'outline outline-[1.5px] outline-blue-400/40 bg-blue-50/30' 
-                        : 'hover:bg-gray-50'}
-                    `}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setFocusedCell({ contactId: contact.email, field: column.key });
-                      tableRef.current?.focus();
-                    }}
-                    onDoubleClick={(e) => {
-                      e.preventDefault();
-                      handleDoubleClick(contact, column.key);
-                    }}
-                  >
-                    {editingCell?.contactId === contact.email && editingCell?.field === column.key ? (
-                      <motion.div
-                        initial={{ scale: 0.98 }}
-                        animate={{ scale: 1 }}
-                        className="relative"
+                {safeColumns.map((column) => {
+                  const isSelected = state.selectedCells.has(
+                    createCellId(contact, column.key)
+                  );
+                  const isFocused = 
+                    focusedCell?.contactId === getContactIdentifier(contact) && 
+                    focusedCell?.field === column.key;
+                  const isEditing = editingCell?.contactId === contact.email && editingCell?.field === column.key;
+                  
+                  return (
+                    <td
+                      key={column.key}
+                      className={`
+                        px-6 py-4 text-sm text-gray-600
+                        relative cursor-text
+                        transition-colors duration-150
+                        border-b border-gray-100
+                        ${isEditing ? 'z-10' : ''}
+                        ${isFocused ? 'outline outline-2 outline-blue-400/40 z-[1]' : ''}
+                        ${isSelected ? 'bg-[#F4F4FF]' : 'hover:bg-gray-50'}
+                      `}
+                      onClick={(e) => handleCellClick(e, contact, column)}
+                    >
+                      <div 
+                        className={`
+                          relative min-h-[24px]
+                          ${isSelected ? 'bg-[#F4F4FF]' : ''}
+                        `}
                       >
-                        <EditableCell
-                          value={editingCell.value}
-                          onChange={(value) => setEditingCell({ ...editingCell, value })}
-                          onBlur={handleSaveEdit}
-                          onKeyDown={(e) => handleEditKeyDown(e, contact)}
-                          type={column.key === 'lastContacted' ? 'date' : 'text'}
-                        />
-                      </motion.div>
-                    ) : (
-                      <div className="group/cell relative">
-                        <span>{column.render(contact)}</span>
+                        {isEditing ? (
+                          <motion.div
+                            initial={{ scale: 0.98 }}
+                            animate={{ scale: 1 }}
+                            className="relative"
+                          >
+                            <EditableCell
+                              value={editingCell.value}
+                              onChange={(value) => setEditingCell({ ...editingCell, value })}
+                              onBlur={handleSaveEdit}
+                              onKeyDown={(e) => handleEditKeyDown(e, contact)}
+                              type={column.key === 'lastContacted' ? 'date' : 'text'}
+                            />
+                          </motion.div>
+                        ) : (
+                          <span>{column.render(contact)}</span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                ))}
+                    </td>
+                  );
+                })}
               </motion.tr>
             ))}
           </tbody>

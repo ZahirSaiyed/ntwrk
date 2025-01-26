@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic'
+
 import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from "next-auth/react";
@@ -101,6 +103,7 @@ export default function ContactsPage() {
     'name',
     'email',
     'company',
+    'industry',
     'lastContacted'
   ]);
   const [customColumns, setCustomColumns] = useState<Column[]>([]);
@@ -163,6 +166,12 @@ export default function ContactsPage() {
       description: 'Current organization',
       render: (contact: Contact) => contact.company || '-'
     },
+    {
+      key: 'industry' as ColumnKey,
+      label: 'Industry',
+      description: 'Company industry',
+      render: (contact: Contact) => contact.industry || '-'
+    },
     ...(contacts[0]?.customFields?.map((field: CustomField) => ({
       key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
       label: field.label,
@@ -207,6 +216,7 @@ export default function ContactsPage() {
           contact.name.toLowerCase().includes(term) ||
           contact.email.toLowerCase().includes(term) ||
           (contact.company && contact.company.toLowerCase().includes(term)) ||
+          (contact.industry && contact.industry.toLowerCase().includes(term)) ||
           contact.customFields?.some((field: CustomField) => 
             field.value.toLowerCase().includes(term)
           )

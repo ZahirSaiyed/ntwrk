@@ -4,15 +4,22 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 export default function Auth() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
   useEffect(() => {
     setIsLoaded(true);
-  }, []);
+    if (status === 'authenticated') {
+      router.push('/contacts');
+    }
+  }, [status, router]);
 
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl: '/contacts' });

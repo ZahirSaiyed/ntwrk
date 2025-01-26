@@ -195,15 +195,29 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
   const mapHeadersToContact = (headers: string[], values: string[]): Partial<Contact> => {
     const findValue = (mappings: string[]) => {
       const headerIndex = headers.findIndex(h => 
-        mappings.some(m => h.toLowerCase().includes(m.toLowerCase()))
+        mappings.some(m => h.toLowerCase() === m.toLowerCase())
       );
       return headerIndex !== -1 ? values[headerIndex]?.trim() : '';
     };
 
     const { headerMappings } = selectedSource;
     
+    // Special handling for LinkedIn name fields
+    let name = '';
+    if (selectedSource.id === 'linkedin') {
+      const firstNameIndex = headers.findIndex(h => h === 'First Name');
+      const lastNameIndex = headers.findIndex(h => h === 'Last Name');
+      if (firstNameIndex !== -1 && lastNameIndex !== -1) {
+        const firstName = values[firstNameIndex]?.trim() || '';
+        const lastName = values[lastNameIndex]?.trim() || '';
+        name = `${firstName} ${lastName}`.trim();
+      }
+    } else {
+      name = findValue(headerMappings.name);
+    }
+    
     return {
-      name: findValue(headerMappings.name),
+      name,
       email: findValue(headerMappings.email).toLowerCase(),
       company: findValue(headerMappings.company || []),
       lastContacted: findValue(headerMappings.lastContacted || []) || new Date().toISOString()
@@ -268,7 +282,18 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
           }
 
           const headers = Object.keys(results.data[0] || {});
-          const contacts = results.data.map(row => {
+          
+          // Filter out invalid LinkedIn contacts before processing
+          let validData = results.data;
+          if (selectedSource.id === 'linkedin') {
+            validData = results.data.filter(row => {
+              const firstName = row['First Name']?.trim();
+              const lastName = row['Last Name']?.trim();
+              return firstName && lastName;
+            });
+          }
+
+          const contacts = validData.map(row => {
             const values = Object.values(row).map(v => v?.toString() || '');
             const mappedContact = mapHeadersToContact(headers, values);
             

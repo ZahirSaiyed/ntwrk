@@ -3,6 +3,7 @@ export interface Contact {
   email: string;
   lastContacted: string;
   company?: string;
+  industry?: string;
   relationshipStrength?: {
     score: number;
     trend: 'rising' | 'stable' | 'falling';

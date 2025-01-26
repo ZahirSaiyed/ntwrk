@@ -1,26 +1,23 @@
+'use client';
+
 import { useSession } from 'next-auth/react';
-import { useRouter, usePathname } from 'next/navigation';
+import { ReactNode, useState } from 'react';
 import Sidebar from './Sidebar';
-import { ReactNode, useState, useEffect } from 'react';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const pathname = usePathname();
+  const { status } = useSession();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  useEffect(() => {
-    setIsCollapsed(true);
-  }, [pathname]);
-
-  if (status === 'loading') return null;
-  if (!session) {
-    router.push('/auth');
-    return null;
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+      </div>
+    );
   }
 
   return (

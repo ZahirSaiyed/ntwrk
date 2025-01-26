@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import AppLayout from '@/components/Layout/AppLayout';
 import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
