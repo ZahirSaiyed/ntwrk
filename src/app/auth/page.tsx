@@ -15,8 +15,14 @@ export default function Auth() {
   const router = useRouter();
 
   useEffect(() => {
+    console.log('Auth page - Initial load:', {
+      status,
+      isAuthenticated: status === 'authenticated'
+    });
+    
     setIsLoaded(true);
     if (status === 'authenticated') {
+      console.log('Auth page - Redirecting to contacts');
       router.push('/contacts');
     }
   }, [status, router]);

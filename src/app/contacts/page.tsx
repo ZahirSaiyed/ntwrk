@@ -72,6 +72,7 @@ const importContactsFunction = async () => {
 };
 
 export default function ContactsPage() {
+  console.log('ContactsPage - Component mounted');
   const router = useRouter();
   const { data: session } = useSession();
   console.log('ContactsPage - Session state:', {
