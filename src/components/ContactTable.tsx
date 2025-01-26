@@ -4,6 +4,7 @@ import { format, isValid, parseISO } from 'date-fns';
 import { motion } from 'framer-motion';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useUndo } from '../hooks/useUndo';
+import { EmailCopyButton } from './EmailCopyButton';
 
 interface ContactTableProps {
   contacts: Contact[];
@@ -26,6 +27,7 @@ interface ContactTableProps {
   showToast: (message: string, type: 'success' | 'error') => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+  currentGroup?: { name: string; members: string[] } | null;
 }
 
 type Column = {
@@ -197,6 +199,7 @@ export default function ContactTable({
   onPageChange,
   onPageSizeChange,
   totalContacts,
+  currentGroup,
 }: ContactTableProps) {
   const safeColumns = columns?.length > 0 ? columns : [
     {
@@ -779,6 +782,15 @@ export default function ContactTable({
                 >
                   <div className="flex items-center gap-2">
                     {column.label}
+                    {column.key === 'email' && (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <EmailCopyButton
+                          emails={contacts.map(c => c.email)}
+                          groupName={currentGroup?.name || 'All Contacts'}
+                          variant="minimal"
+                        />
+                      </div>
+                    )}
                     <span className="text-[#1E1E3F]">
                       {sortConfig.key === column.key ? (
                         sortConfig.direction === 'asc' ? '↑' : '↓'

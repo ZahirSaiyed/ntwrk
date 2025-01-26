@@ -19,7 +19,6 @@ import ContactDetail from "@/components/ContactDetail";
 import Pagination from "@/components/Pagination";
 import { calculateVelocityScore } from '@/utils/velocityTracking';
 import ColumnCustomizer from "@/components/ColumnCustomizer";
-import ExportButton from '@/components/ExportButton';
 import { useRouter } from 'next/navigation';
 import OnboardingPrompt from '@/components/OnboardingPrompt';
 import InboxCleanupAssistant from '@/components/insights/InboxCleanupAssistant';
@@ -27,6 +26,7 @@ import GroupExportModal from '@/components/GroupExportModal';
 import NetworkScore from '@/components/insights/NetworkScore';
 import ImportModal from '@/components/ImportModal';
 import { toast } from 'react-hot-toast';
+import { EmailCopyButton } from '@/components/EmailCopyButton';
 
 // interface Contact {
 //   name: string;
@@ -692,6 +692,7 @@ export default function ContactsPage() {
 
           <ContactTable 
             contacts={filteredContacts}
+            currentGroup={currentGroup}
             onContactClick={setSelectedContact}
             onContactUpdate={handleContactUpdate}
             currentPage={currentPage}
