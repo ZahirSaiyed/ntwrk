@@ -253,8 +253,14 @@ export async function GET(
   request: Request
 ): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
-  
+  console.log('API Route - Session:', {
+    hasSession: !!session,
+    hasEmail: !!session?.user?.email,
+    hasAccessToken: !!session?.accessToken
+  });
+
   if (!session?.user?.email || !session.accessToken) {
+    console.log('API Route - Auth failed: No session or token');
     return NextResponse.json({ 
       error: 'Unauthorized'
     }, { status: 401 });
@@ -280,6 +286,10 @@ export async function GET(
       userId: 'me',
       maxResults: 500,
       q: 'in:sent OR in:inbox'
+    });
+
+    console.log('API Route - Messages:', {
+      count: messagesResponse.data.messages?.length || 0
     });
 
     if (!messagesResponse.data.messages) {
@@ -466,9 +476,13 @@ export async function GET(
       interactions: contact.interactions
     }));
 
+    console.log('API Route - Final contacts:', {
+      count: contacts.length
+    });
+
     return NextResponse.json(contacts);
   } catch (error: any) {
-    console.error('Error fetching contacts:', error);
+    console.error('API Route - Error:', error);
     return NextResponse.json({ 
       error: 'Failed to fetch contacts',
       details: error.message 
