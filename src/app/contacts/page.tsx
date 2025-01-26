@@ -74,6 +74,10 @@ const importContactsFunction = async () => {
 export default function ContactsPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  console.log('ContactsPage - Session state:', {
+    status: session ? 'authenticated' : 'unauthenticated',
+    hasEmail: !!session?.user?.email
+  });
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
@@ -123,18 +127,29 @@ export default function ContactsPage() {
   const { data: contacts = [], isLoading, error } = useQuery({
     queryKey: ['contacts', session?.user?.email],
     queryFn: async () => {
+      console.log('ContactsPage - Starting contact fetch');
       const response = await fetch('/api/contacts');
+      const data = await response.json();
+      console.log('ContactsPage - Fetch response:', {
+        status: response.status,
+        ok: response.ok,
+        dataLength: Array.isArray(data) ? data.length : 'not an array',
+        error: !response.ok ? data.error : null
+      });
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Contact fetch error:', errorData);
-        throw new Error(errorData.error || 'Failed to fetch contacts');
+        throw new Error(data.error || 'Failed to fetch contacts');
       }
-      return response.json();
+      return data;
     },
     enabled: !!session?.user?.email,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   });
+
+  if (error) {
+    console.error('ContactsPage - Query error:', error);
+  }
 
   // Filter out spam contacts for display
   const displayContacts = contacts.filter((contact: Contact) => 
