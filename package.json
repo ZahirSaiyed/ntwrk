@@ -21,6 +21,7 @@
     "canvas-confetti": "^1.9.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "critters": "^0.0.25",
     "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.12.0",
