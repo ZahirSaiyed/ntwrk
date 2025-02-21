@@ -11,6 +11,7 @@ export default function Auth() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -28,7 +29,9 @@ export default function Auth() {
   }, [status, router]);
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/contacts' });
+    signIn('google', { 
+      callbackUrl: '/contacts'
+    });
   };
 
   return (
@@ -67,6 +70,18 @@ export default function Auth() {
           <div className="bg-white/50 backdrop-blur-sm rounded-2xl p-8 border border-[#1E1E3F]/10 shadow-sm">
             {/* Sign In Options */}
             <div className="space-y-6">
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+                  {error}
+                  <button 
+                    onClick={() => setError(null)}
+                    className="float-right text-red-400 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               <button 
                 onClick={handleGoogleSignIn}
                 className={`w-full flex items-center justify-center gap-3 px-8 py-3.5 bg-white rounded-xl hover:bg-[#1E1E3F]/5 border border-[#1E1E3F]/10 transition-all group relative shadow-sm hover:shadow-md ${isLoaded ? 'animate-subtle-pulse' : ''}`}

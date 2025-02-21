@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import GroupFAB from "@/components/GroupFAB";
@@ -27,6 +27,7 @@ import NetworkScore from '@/components/insights/NetworkScore';
 import ImportModal from '@/components/ImportModal';
 import { toast } from 'react-hot-toast';
 import { EmailCopyButton } from '@/components/EmailCopyButton';
+import { useHotkeys } from 'react-hotkeys-hook';
 
 // interface Contact {
 //   name: string;
@@ -72,14 +73,45 @@ const importContactsFunction = async () => {
 };
 
 export default function ContactsPage() {
-  console.log('ContactsPage - Component mounted');
+  console.log('🚀 ContactsPage mounted');
   const router = useRouter();
-  const { data: session } = useSession();
-  console.log('ContactsPage - Session state:', {
-    status: session ? 'authenticated' : 'unauthenticated',
-    hasEmail: !!session?.user?.email
+  const { data: session, status } = useSession({
+    required: true,
+    onUnauthenticated() {
+      router.push('/auth');
+    },
+  });
+  console.log('🔑 Session state:', {
+    status,
+    hasEmail: !!session?.user?.email,
+    accessToken: !!session?.accessToken,
+    email: session?.user?.email
   });
   const queryClient = useQueryClient();
+
+  // Add effect to handle session changes
+  useEffect(() => {
+    console.log('👤 Session effect triggered:', {
+      status,
+      hasAccessToken: !!session?.accessToken
+    });
+    
+    if (status === 'loading') {
+      console.log('⏳ Session loading...');
+      return;
+    }
+    
+    // if (status === 'unauthenticated' as const) {
+    //   console.log('🚫 User not authenticated, redirecting to auth...');
+    //   router.push('/auth');
+    //   return;
+    // }
+    
+    if (status === 'authenticated' && session?.accessToken) {
+      console.log('✅ User authenticated, invalidating queries...');
+      queryClient.invalidateQueries({ queryKey: ['contacts', session.user?.email] });
+    }
+  }, [status, session, router, queryClient]);
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
@@ -117,6 +149,10 @@ export default function ContactsPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showCleanupAssistant, setShowCleanupAssistant] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [spamEmails, setSpamEmails] = useState<Set<string>>(new Set());
+
+  // Add state for industry loading
+  const [loadingIndustries, setLoadingIndustries] = useState<Set<string>>(new Set());
 
   const importContactsMutation = useMutation({
     mutationFn: importContactsFunction,
@@ -128,24 +164,34 @@ export default function ContactsPage() {
   const { data: contacts = [], isLoading, error } = useQuery({
     queryKey: ['contacts', session?.user?.email],
     queryFn: async () => {
-      console.log('ContactsPage - Starting contact fetch');
+      console.log('🔍 Fetching contacts...');
+      if (!session?.accessToken) {
+        console.log('❌ No access token available');
+        throw new Error('No access token available');
+      }
+      
       const response = await fetch('/api/contacts');
       const data = await response.json();
-      console.log('ContactsPage - Fetch response:', {
+      console.log('📦 Fetch response:', {
         status: response.status,
         ok: response.ok,
         dataLength: Array.isArray(data) ? data.length : 'not an array',
-        error: !response.ok ? data.error : null
+        data: data
       });
       
       if (!response.ok) {
+        if (data.code === 'AUTH_REQUIRED') {
+          console.log('🔒 Auth required, redirecting...');
+          signOut({ redirect: false });
+          router.push('/auth');
+          throw new Error('Authentication required');
+        }
         throw new Error(data.error || 'Failed to fetch contacts');
       }
       return data;
     },
-    enabled: !!session?.user?.email,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    enabled: status === 'authenticated' && !!session?.user?.email && !!session?.accessToken,
+    retry: 1,
   });
 
   if (error) {
@@ -153,10 +199,51 @@ export default function ContactsPage() {
   }
 
   // Filter out spam contacts for display
-  const displayContacts = contacts.filter((contact: Contact) => 
-    !(contact as ContactWithSpam).isSpam
-  );
+  const displayContacts = useMemo(() => {
+    const filtered = (contacts || []).filter((contact: Contact) => 
+      !(contact as ContactWithSpam).isSpam && 
+      !spamEmails.has(contact.email)
+    );
+    console.log('🎯 Display contacts:', {
+      originalLength: contacts.length,
+      filteredLength: filtered.length,
+      spamCount: spamEmails.size
+    });
+    return filtered;
+  }, [contacts, spamEmails]);
 
+  // Listen for industry updates
+  useEffect(() => {
+    const channel = new BroadcastChannel('contact-updates');
+    
+    channel.onmessage = (event) => {
+      if (event.data.type === 'INDUSTRY_UPDATE') {
+        const { email, industry } = event.data;
+        
+        // Update the contact's industry
+        queryClient.setQueryData(['contacts', session?.user?.email], (oldData: Contact[] | undefined) => {
+          if (!oldData) return oldData;
+          
+          return oldData.map(contact => 
+            contact.email === email 
+              ? { ...contact, industry }
+              : contact
+          );
+        });
+
+        // Remove from loading state
+        setLoadingIndustries(prev => {
+          const next = new Set(prev);
+          next.delete(email);
+          return next;
+        });
+      }
+    };
+
+    return () => channel.close();
+  }, [queryClient, session?.user?.email]);
+
+  // Update the columns definition to show loading state
   useEffect(() => {
     if (contacts?.length) {
       const columns = [
@@ -188,7 +275,17 @@ export default function ContactsPage() {
           key: 'industry' as ColumnKey,
           label: 'Industry',
           description: 'Company industry',
-          render: (contact: Contact) => contact.industry || '-'
+          render: (contact: Contact) => {
+            if (loadingIndustries.has(contact.email)) {
+              return (
+                <div className="flex items-center space-x-2">
+                  <div className="h-4 w-4 border-2 border-gray-300 border-t-[#1E1E3F] rounded-full animate-spin"></div>
+                  <span className="text-gray-400">Detecting...</span>
+                </div>
+              );
+            }
+            return contact.industry || '-';
+          }
         },
       ];
 
@@ -215,7 +312,7 @@ export default function ContactsPage() {
 
       setAvailableColumnsList(columns);
     }
-  }, [contacts]);
+  }, [contacts, loadingIndustries]);
 
   useEffect(() => {
     if (contacts?.length) {
@@ -249,12 +346,13 @@ export default function ContactsPage() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const getFilteredContacts = (contacts: Contact[], searchTerm: string, activeFilter: FilterType) => {
-    let filteredResults = [...displayContacts];
+    // Start with the passed contacts array
+    let filteredResults = [...contacts];
     
     // Apply search filter
     if (searchTerm) {
       const searchTerms = searchTerm.toLowerCase().split(' ');
-      filteredResults = filteredResults.filter(contact => 
+      filteredResults = filteredResults.filter((contact: Contact) => 
         searchTerms.every(term =>
           contact.name.toLowerCase().includes(term) ||
           contact.email.toLowerCase().includes(term) ||
@@ -271,14 +369,14 @@ export default function ContactsPage() {
     if (activeFilter.startsWith('group-')) {
       const groupId = activeFilter.replace('group-', '');
       const group = groups.find(g => g.id === groupId);
-      filteredResults = filteredResults.filter(contact => 
+      filteredResults = filteredResults.filter((contact: Contact) => 
         group?.members.includes(contact.email) ?? false
       );
     }
 
     // Apply sorting
     if (sortConfig.key) {
-      filteredResults.sort((a, b) => {
+      filteredResults.sort((a: Contact, b: Contact) => {
         // Handle custom field sorting
         if (typeof sortConfig.key === 'string' && sortConfig.key.startsWith('custom_')) {
           const aCustomField = a.customFields?.find((f: CustomField) => 
@@ -328,9 +426,44 @@ export default function ContactsPage() {
   };
 
   const filteredContacts = useMemo(() => 
-    getFilteredContacts(contacts, search, filter),
-    [contacts, search, filter, getFilteredContacts]
+    getFilteredContacts(displayContacts, search, filter),
+    [displayContacts, search, filter, groups, sortConfig]
   );
+
+  // Get paginated contacts - simplified and fixed
+  const paginatedContacts = useMemo(() => {
+    console.log('🔢 Calculating pagination:', {
+      totalContacts: contacts?.length || 0,
+      filteredCount: filteredContacts.length,
+      currentPage,
+      itemsPerPage,
+      startIndex: (currentPage - 1) * itemsPerPage,
+      endIndex: currentPage * itemsPerPage,
+    });
+
+    // Ensure currentPage is valid
+    const maxPage = Math.max(1, Math.ceil(filteredContacts.length / itemsPerPage));
+    const validPage = Math.min(currentPage, maxPage);
+    if (validPage !== currentPage) {
+      console.log('📝 Correcting page number:', { from: currentPage, to: validPage });
+      setCurrentPage(validPage);
+      return [];
+    }
+
+    const start = (validPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const slicedContacts = filteredContacts.slice(start, end);
+
+    console.log('📑 Pagination result:', {
+      start,
+      end,
+      pageSize: slicedContacts.length,
+      firstEmail: slicedContacts[0]?.email,
+      lastEmail: slicedContacts[slicedContacts.length - 1]?.email
+    });
+
+    return slicedContacts;
+  }, [filteredContacts, currentPage, itemsPerPage, contacts?.length]);
 
   const handleSort = (key: keyof Contact | CustomColumnKey) => {
     setSortConfig(prevConfig => {
@@ -342,9 +475,10 @@ export default function ContactsPage() {
     });
   };
 
+  // Reset to first page when filter changes or contacts are marked as spam
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, filter]);
+  }, [search, filter, spamEmails]);
 
   const updateContactMutation = useMutation({
     mutationFn: async (updatedContact: Contact) => {
@@ -404,6 +538,21 @@ export default function ContactsPage() {
     toast[type](message);
   };
 
+  // Add global keyboard shortcuts for page navigation
+  useHotkeys('meta+[', (e) => {
+    e.preventDefault();
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  }, { enableOnFormTags: true });
+
+  useHotkeys('meta+]', (e) => {
+    e.preventDefault();
+    if (currentPage * itemsPerPage < filteredContacts.length) {
+      setCurrentPage(currentPage + 1);
+    }
+  }, { enableOnFormTags: true });
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
@@ -453,6 +602,19 @@ export default function ContactsPage() {
   };
 
   const { needFollowUp, activeConnectionsPercentage } = calculateMetrics();
+
+  // Debug logs
+  console.log('Pagination Debug:', {
+    totalContacts: contacts.length,
+    displayContactsLength: displayContacts.length,
+    filteredContactsLength: filteredContacts.length,
+    currentPage,
+    itemsPerPage,
+    paginatedContactsLength: paginatedContacts.length,
+    spamEmailsCount: spamEmails.size,
+    searchTerm: search,
+    activeFilter: filter
+  });
 
   const handleCreateGroup = (name: string, members: Set<string>) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -707,7 +869,7 @@ export default function ContactsPage() {
           </div>
 
           <ContactTable 
-            contacts={filteredContacts}
+            contacts={paginatedContacts}
             currentGroup={currentGroup}
             onContactClick={setSelectedContact}
             onContactUpdate={handleContactUpdate}
@@ -719,8 +881,8 @@ export default function ContactsPage() {
             onSort={handleSort}
             showToast={showToast}
             totalContacts={filteredContacts.length}
-            onPageChange={(page) => setCurrentPage(page)}
-            onPageSizeChange={(size) => setItemsPerPage(size)}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setItemsPerPage}
           />
           <Pagination
             currentPage={currentPage}
@@ -765,6 +927,10 @@ export default function ContactsPage() {
         <InboxCleanupAssistant 
           contacts={contacts}
           onMarkAsSpam={(emails) => {
+            // Update local spam state
+            setSpamEmails(prev => new Set([...prev, ...emails]));
+            
+            // Update contacts in the cache
             const updatedContacts = contacts.map((contact: Contact) => ({
               ...contact,
               isSpam: emails.includes(contact.email)
@@ -772,10 +938,17 @@ export default function ContactsPage() {
             queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
           }}
           onUndo={(email) => {
+            // Remove from spam emails set
+            setSpamEmails(prev => {
+              const next = new Set(prev);
+              next.delete(email);
+              return next;
+            });
+            
+            // Update contact in cache
             const updatedContacts = contacts.map((contact: Contact) => ({
               ...contact,
-              isSpam: (contact as ContactWithSpam).isSpam === undefined ? false : 
-                     email === contact.email ? false : (contact as ContactWithSpam).isSpam
+              isSpam: contact.email === email ? false : (contact as ContactWithSpam).isSpam
             } as ContactWithSpam));
             queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
           }}

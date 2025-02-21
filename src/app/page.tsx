@@ -1,11 +1,63 @@
 'use client';
-import Image from 'next/image';
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 
-export default function Home() {
+import Image from 'next/image';
+import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-white flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl text-red-600 mb-4">Something went wrong</h1>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-6 py-2 bg-[#1E1E3F] text-white rounded-full hover:opacity-90"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Loading component
+function LoadingSpinner() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-white flex items-center justify-center">
+      <div className="w-16 h-16 border-4 border-[#1E1E3F]/20 border-t-[#1E1E3F] rounded-full animate-spin"></div>
+    </div>
+  );
+}
+
+// Main content component
+function HomeContent() {
+  const { data: session, status } = useSession();
   const [scrolled, setScrolled] = useState(false);
   const [currentFeature, setCurrentFeature] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -31,6 +83,10 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  if (!mounted) {
+    return <LoadingSpinner />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-white">
       {/* Navigation */}
@@ -41,12 +97,23 @@ export default function Home() {
               Node
             </Link>
             <div className="hidden md:flex items-center space-x-8">
-              <Link 
-                href="/auth" 
-                className="px-6 py-2.5 bg-[#1E1E3F] text-white rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300 ease-out"
-              >
-                Get Started
-              </Link>
+              {status === 'loading' ? (
+                <div className="w-24 h-10 bg-gray-200 animate-pulse rounded-full"></div>
+              ) : session ? (
+                <Link 
+                  href="/contacts" 
+                  className="px-6 py-2.5 bg-[#1E1E3F] text-white rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300 ease-out"
+                >
+                  View Your Network
+                </Link>
+              ) : (
+                <Link 
+                  href="/auth" 
+                  className="px-6 py-2.5 bg-[#1E1E3F] text-white rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300 ease-out"
+                >
+                  Get Started
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -78,50 +145,76 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-              <Link 
-                href="/auth" 
-                className="group px-8 py-4 bg-gradient-to-r from-[#1E1E3F] via-[#2D2D5F] to-[#1E1E3F] text-white rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300 flex items-center"
-              >
-                <span>Try it free</span>
-                <svg 
-                  className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
+              {status === 'loading' ? (
+                <div className="w-48 h-14 bg-gray-200 animate-pulse rounded-full"></div>
+              ) : session ? (
+                <Link 
+                  href="/contacts" 
+                  className="group px-8 py-4 bg-gradient-to-r from-[#1E1E3F] via-[#2D2D5F] to-[#1E1E3F] text-white rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300 flex items-center"
                 >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M9 5l7 7-7 7" 
-                  />
-                </svg>
-              </Link>
-              <Link 
-                href="/demo" 
-                className="group px-8 py-4 bg-white text-[#1E1E3F] rounded-full hover:scale-105 hover:shadow-md transition-all duration-300 flex items-center border border-[#1E1E3F]/10"
-              >
-                <svg 
-                  className="w-4 h-4 mr-2 group-hover:rotate-12 transition-transform" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" 
-                  />
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
-                  />
-                </svg>
-                <span>Watch demo</span>
-              </Link>
+                  <span>View Your Network</span>
+                  <svg 
+                    className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth={2} 
+                      d="M9 5l7 7-7 7" 
+                    />
+                  </svg>
+                </Link>
+              ) : (
+                <>
+                  <Link 
+                    href="/auth" 
+                    className="group px-8 py-4 bg-gradient-to-r from-[#1E1E3F] via-[#2D2D5F] to-[#1E1E3F] text-white rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300 flex items-center"
+                  >
+                    <span>Try it free</span>
+                    <svg 
+                      className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M9 5l7 7-7 7" 
+                      />
+                    </svg>
+                  </Link>
+                  <Link 
+                    href="/demo" 
+                    className="group px-8 py-4 bg-white text-[#1E1E3F] rounded-full hover:scale-105 hover:shadow-md transition-all duration-300 flex items-center border border-[#1E1E3F]/10"
+                  >
+                    <svg 
+                      className="w-4 h-4 mr-2 group-hover:rotate-12 transition-transform" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" 
+                      />
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                      />
+                    </svg>
+                    <span>Watch demo</span>
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Feature Grid */}
@@ -288,12 +381,21 @@ export default function Home() {
           <p className="text-gray-300 mb-8 max-w-2xl mx-auto">
             Join the future of intelligent networking. Your relationships deserve better.
           </p>
-          <Link 
-            href="/auth" 
-            className="inline-block px-8 py-4 bg-gradient-to-r from-white via-gray-50 to-white text-[#1E1E3F] rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300"
-          >
-            Get Started For Free
-          </Link>
+          {!session ? (
+            <Link 
+              href="/auth" 
+              className="inline-block px-8 py-4 bg-gradient-to-r from-white via-gray-50 to-white text-[#1E1E3F] rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300"
+            >
+              Get Started For Free
+            </Link>
+          ) : (
+            <Link 
+              href="/contacts" 
+              className="inline-block px-8 py-4 bg-gradient-to-r from-white via-gray-50 to-white text-[#1E1E3F] rounded-full hover:scale-105 hover:shadow-lg transition-all duration-300"
+            >
+              View Your Network
+            </Link>
+          )}
         </div>
       </section>
 
@@ -351,5 +453,16 @@ export default function Home() {
         }
       `}</style>
     </div>
+  );
+}
+
+// Main export
+export default function Home() {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingSpinner />}>
+        <HomeContent />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

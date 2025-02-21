@@ -6,6 +6,7 @@ import { analyzeContact, SpamDetectionResult } from '../../utils/spamDetection';
 import CleanupStep1 from './CleanupStep1';
 import CleanupStep2 from './CleanupStep2';
 import CleanupStep3 from './CleanupStep3';
+import { toast } from 'react-hot-toast';
 
 interface ContactWithSpam extends Contact {
   isSpam?: boolean;
@@ -218,22 +219,25 @@ export default function InboxCleanupAssistant({
     setCategorizedContacts(newCategories);
   };
 
-  const handleComplete = () => {
-    // Apply the categorizations
-    const toArchive = categorizedContacts
-      .filter(c => c.category === 'ignore')
-      .map(c => c.email);
-    
-    if (toArchive.length > 0) {
-      setSpamContacts(prev => {
-        const newSpamContacts = new Set(prev);
-        toArchive.forEach(email => newSpamContacts.add(email));
-        return newSpamContacts;
-      });
+  const handleComplete = async () => {
+    // Get emails to archive from categorized contacts
+    const emailsToArchive = categorizedContacts
+      .filter(contact => contact.category === 'ignore')
+      .map(contact => contact.email);
+
+    if (emailsToArchive.length > 0) {
+      // Update local spam state
+      setSpamEmails(prev => new Set([...prev, ...emailsToArchive]));
       
-      onMarkAsSpam(toArchive);
+      // Call parent handler to mark as spam
+      onMarkAsSpam(emailsToArchive);
+      
+      // Show success message
+      toast.success(`${emailsToArchive.length} contacts archived`);
+      
+      // Close the assistant
+      onClose();
     }
-    onClose();
   };
 
   const handleMarkAsSpam = useCallback((emails: string[]) => {

@@ -103,57 +103,111 @@ const USER_PROMPT_TEMPLATE = (companies: { name: string, domain: string }[]) => 
   ).join('\n');
 };
 
-let isRateLimited = false;
+// Update rate limiting configuration
+const RATE_LIMIT = {
+  maxRequests: 20, // Reduced from 50 to 20 requests per minute
+  windowMs: 60 * 1000, // 1 minute
+  retryAfter: 120, // Increased to 2 minutes
+};
+
+let requestCount = 0;
+let windowStart = Date.now();
+
+const resetRateLimit = () => {
+  requestCount = 0;
+  windowStart = Date.now();
+};
+
+const checkRateLimit = () => {
+  const now = Date.now();
+  if (now - windowStart >= RATE_LIMIT.windowMs) {
+    resetRateLimit();
+  }
+  if (requestCount >= RATE_LIMIT.maxRequests) {
+    return false;
+  }
+  requestCount++;
+  return true;
+};
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const detectIndustry = async (companies: { name: string, domain: string }[]): Promise<{ [key: string]: string }> => {
-  if (isRateLimited) {
-    return {};
-  }
-
-  try {
-    const results: { [key: string]: string } = {};
+  const results: { [key: string]: string } = {};
+  
+  const BATCH_SIZE = 5; // Reduced from 10 to 5
+  const MAX_RETRIES = 3;
+  const MAX_CONCURRENT_BATCHES = 4; // New: limit concurrent processing
+  
+  // Process companies in smaller chunks to avoid overwhelming the API
+  for (let i = 0; i < companies.length; i += BATCH_SIZE * MAX_CONCURRENT_BATCHES) {
+    const chunk = companies.slice(i, i + BATCH_SIZE * MAX_CONCURRENT_BATCHES);
+    const batches = [];
     
-    const BATCH_SIZE = 20;
+    for (let j = 0; j < chunk.length; j += BATCH_SIZE) {
+      batches.push(chunk.slice(j, j + BATCH_SIZE));
+    }
     
-    for (let i = 0; i < companies.length; i += BATCH_SIZE) {
-      if (isRateLimited) {
-        break;
-      }
-
-      const batch = companies.slice(i, i + BATCH_SIZE);
+    // Process batches with controlled concurrency
+    await Promise.all(batches.map(async (batch) => {
+      let retries = 0;
       
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: USER_PROMPT_TEMPLATE(batch) }
-          ],
-          temperature: 0.1,
-          max_tokens: 100,
-        });
+      while (retries < MAX_RETRIES) {
+        if (!checkRateLimit()) {
+          console.log(`Rate limit reached, waiting ${RATE_LIMIT.retryAfter}s before retry...`);
+          await sleep(RATE_LIMIT.retryAfter * 1000);
+          continue;
+        }
 
-        const industries = completion.choices[0]?.message?.content?.split('\n') || [];
-        
-        batch.forEach((company, index) => {
-          const key = `${company.name}|${company.domain}`;
-          results[key] = industries[index]?.trim() || 'Unknown';
-        });
-      } catch (error: any) {
-        if (error?.message?.includes('Rate limit reached')) {
-          console.warn('OpenAI rate limit reached, skipping remaining industry detection');
-          isRateLimited = true;
+        try {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4-turbo-preview",
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: USER_PROMPT_TEMPLATE(batch) }
+            ],
+            temperature: 0.1,
+            max_tokens: 100,
+          });
+
+          const industries = completion.choices[0]?.message?.content?.split('\n') || [];
+          
+          batch.forEach((company, index) => {
+            const key = `${company.name}|${company.domain}`;
+            results[key] = industries[index]?.trim() || 'Unknown';
+          });
+          
+          // Add a small delay between successful requests
+          await sleep(1000);
+          break; // Success, move to next batch
+        } catch (error: any) {
+          retries++;
+          console.error(`Error processing batch (attempt ${retries}/${MAX_RETRIES}):`, error.message);
+          
+          if (error?.message?.includes('Rate limit reached')) {
+            const backoffTime = Math.pow(2, retries) * 10000; // Exponential backoff starting at 10s
+            console.warn(`OpenAI rate limit reached, waiting ${backoffTime/1000}s before retry...`);
+            await sleep(backoffTime);
+            continue;
+          }
+          
+          if (retries === MAX_RETRIES) {
+            console.error('Max retries reached for batch, marking as Unknown');
+            batch.forEach(company => {
+              const key = `${company.name}|${company.domain}`;
+              results[key] = 'Unknown';
+            });
+          }
           break;
         }
-        console.error('Error processing batch:', error);
       }
-    }
-
-    return results;
-  } catch (error) {
-    console.error('Error detecting industries:', error);
-    return {};
+    }));
+    
+    // Add a delay between chunks to prevent rate limiting
+    await sleep(2000);
   }
+
+  return results;
 };
 
 // Update the contact data interface
@@ -199,21 +253,127 @@ const extractCompanyInfo = async (
     }
   }
 
-  // Initialize industry as empty string
-  let industry = '';
-  
-  // Only call detectIndustry if we have a company name
-  if (company) {
-    const companyInfo = [{
-      name: company,
-      domain: fullDomain || '' // Send the complete domain
-    }];
-    const industries = await detectIndustry(companyInfo);
-    const key = `${company}|${fullDomain}`;
-    industry = industries[key] || '';
+  // Return immediately without industry detection
+  return { company, industry: '' };
+};
+
+// Separate function for background industry detection
+const detectIndustriesInBackground = async (
+  contacts: Map<string, Contact>,
+  updateCallback: (email: string, industry: string) => void,
+  currentPage: number = 1,
+  itemsPerPage: number = 10,
+  baseUrl: string
+) => {
+  // First, process visible contacts (current page)
+  const visibleContacts = Array.from(contacts.values())
+    .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+    .filter(contact => contact.company && !contact.industry);
+
+  // Then get remaining contacts
+  const remainingContacts = Array.from(contacts.values())
+    .filter(contact => 
+      contact.company && 
+      !contact.industry && 
+      !visibleContacts.some(vc => vc.email === contact.email)
+    );
+
+  // Process visible contacts first with higher priority
+  if (visibleContacts.length > 0) {
+    try {
+      const industries = await detectIndustry(
+        visibleContacts.map(contact => ({
+          name: contact.company,
+          domain: contact.email.split('@')[1]
+        }))
+      );
+
+      const updates = visibleContacts.map(contact => {
+        const key = `${contact.company}|${contact.email.split('@')[1]}`;
+        return {
+          email: contact.email,
+          industry: industries[key] || 'Unknown'
+        };
+      }).filter(update => update.industry !== 'Unknown');
+
+      if (updates.length > 0) {
+        try {
+          const industriesUrl = new URL('/api/contacts/industries', baseUrl);
+          await fetch(industriesUrl.toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+          });
+          
+          // Call the callback for each update
+          updates.forEach(update => {
+            updateCallback(update.email, update.industry);
+          });
+        } catch (error) {
+          console.error('Error updating industries for visible contacts:', error);
+        }
+      }
+      
+      // Small delay between batches
+      await sleep(200);
+    } catch (error) {
+      console.error('Error detecting industries for visible contacts:', error);
+    }
   }
 
-  return { company, industry };
+  // Process remaining contacts in the background with lower priority
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < remainingContacts.length; i += BATCH_SIZE) {
+    const batch = remainingContacts.slice(i, i + BATCH_SIZE);
+    
+    try {
+      if (!checkRateLimit()) {
+        console.log('Rate limit reached, pausing background industry detection...');
+        await sleep(RATE_LIMIT.retryAfter * 1000);
+        continue;
+      }
+
+      const industries = await detectIndustry(
+        batch.map(contact => ({
+          name: contact.company,
+          domain: contact.email.split('@')[1]
+        }))
+      );
+      
+      const updates = batch.map(contact => {
+        const key = `${contact.company}|${contact.email.split('@')[1]}`;
+        return {
+          email: contact.email,
+          industry: industries[key] || 'Unknown'
+        };
+      }).filter(update => update.industry !== 'Unknown');
+
+      if (updates.length > 0) {
+        try {
+          const industriesUrl = new URL('/api/contacts/industries', baseUrl);
+          await fetch(industriesUrl.toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+          });
+          
+          // Call the callback for each update
+          updates.forEach(update => {
+            updateCallback(update.email, update.industry);
+          });
+        } catch (error) {
+          console.error('Error updating industries for background contacts:', error);
+        }
+      }
+      
+      // Longer delay for background updates
+      await sleep(500);
+    } catch (error) {
+      console.error('Error detecting industries for batch:', error);
+      // Continue with next batch on error
+      continue;
+    }
+  }
 };
 
 // Update the email extraction function
@@ -256,13 +416,19 @@ export async function GET(
   console.log('API Route - Session:', {
     hasSession: !!session,
     hasEmail: !!session?.user?.email,
-    hasAccessToken: !!session?.accessToken
+    hasAccessToken: !!session?.accessToken,
+    hasError: !!(session as any)?.error
   });
 
-  if (!session?.user?.email || !session.accessToken) {
-    console.log('API Route - Auth failed: No session or token');
+  if (!session?.user?.email || !session.accessToken || (session as any)?.error === 'RefreshAccessTokenError') {
+    console.log('API Route - Auth failed:', {
+      reason: !session?.user?.email ? 'No email' : 
+              !session.accessToken ? 'No token' : 
+              'Token refresh failed'
+    });
     return NextResponse.json({ 
-      error: 'Unauthorized'
+      error: 'Unauthorized',
+      code: 'AUTH_REQUIRED'
     }, { status: 401 });
   }
 
@@ -276,20 +442,24 @@ export async function GET(
       await gmail.users.getProfile({ userId: 'me' });
     } catch (error: any) {
       console.error('Gmail API authentication error:', error);
-      return NextResponse.json({ 
-        error: 'Gmail API authentication failed',
-        details: error.message 
-      }, { status: 401 });
+      if (error.code === 401) {
+        return NextResponse.json({ 
+          error: 'Unauthorized',
+          code: 'AUTH_REQUIRED'
+        }, { status: 401 });
+      }
+      throw error;
     }
 
     const messagesResponse = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 500,
+      maxResults: 500, // Get maximum allowed messages at once
       q: 'in:sent OR in:inbox'
     });
 
     console.log('API Route - Messages:', {
-      count: messagesResponse.data.messages?.length || 0
+      count: messagesResponse.data.messages?.length || 0,
+      fetchingAll: true
     });
 
     if (!messagesResponse.data.messages) {
@@ -297,19 +467,7 @@ export async function GET(
     }
 
     const emailAddresses = new Set<string>();
-    const contactData = new Map<string, {
-      name: string;
-      email: string;
-      company: string;
-      industry: string;
-      lastContacted: string;
-      interactions: Array<{
-        date: string;
-        type: 'sent' | 'received';
-        threadId?: string;
-        participants?: string[];
-      }>;
-    }>();
+    const contactData = new Map<string, Contact>();
 
     const batchSize = 50;
     for (let i = 0; i < messagesResponse.data.messages.length; i += batchSize) {
@@ -345,7 +503,6 @@ export async function GET(
               interactions: []
             };
 
-            // Update company if we found one and the existing one is empty
             if (fromEmails.company && !existing.company) {
               existing.company = fromEmails.company;
             }
@@ -415,7 +572,6 @@ export async function GET(
                 interactions: []
               };
 
-              // Update company if we found one and the existing one is empty
               if (recipient.company && !existing.company) {
                 existing.company = recipient.company;
               }
@@ -440,47 +596,17 @@ export async function GET(
       }));
     }
 
-    // After processing all emails, detect industries for companies
-    const companiesForIndustryDetection = Array.from(contactData.values())
-      .filter(contact => contact.company && !contact.industry)
-      .map(contact => ({
-        name: contact.company,
-        domain: contact.email.split('@')[1]
-      }));
-
-    if (companiesForIndustryDetection.length > 0 && !isRateLimited) {
-      const industries = await detectIndustry(companiesForIndustryDetection);
-      
-      // Update contact data with detected industries
-      contactData.forEach(contact => {
-        if (contact.company && !contact.industry) {
-          const key = `${contact.company}|${contact.email.split('@')[1]}`;
-          contact.industry = industries[key] || '';
-        }
-      });
-    }
-
-    // Reset rate limit flag after some time (e.g., 24 hours)
-    if (isRateLimited) {
-      setTimeout(() => {
-        isRateLimited = false;
-      }, 24 * 60 * 60 * 1000); // 24 hours
-    }
-
-    const contacts = Array.from(contactData.values()).map(contact => ({
+    // Return all contacts without pagination
+    const allContacts = Array.from(contactData.values()).map(contact => ({
       email: contact.email,
       name: contact.name,
       company: contact.company,
-      industry: contact.industry,
+      industry: contact.industry || '',
       lastContacted: contact.lastContacted,
       interactions: contact.interactions
     }));
 
-    console.log('API Route - Final contacts:', {
-      count: contacts.length
-    });
-
-    return NextResponse.json(contacts);
+    return NextResponse.json(allContacts);
   } catch (error: any) {
     console.error('API Route - Error:', error);
     return NextResponse.json({ 

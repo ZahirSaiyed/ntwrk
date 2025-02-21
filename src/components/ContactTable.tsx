@@ -276,27 +276,6 @@ export default function ContactTable({
       );
       const currentColIndex = safeColumns.findIndex(col => col.key === field);
 
-      // Add page navigation shortcuts
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
-          case 'PageUp':
-          case '[':
-            e.preventDefault();
-            if (currentPage > 1) {
-              onPageChange(currentPage - 1);
-            }
-            break;
-          case 'PageDown':
-          case ']':
-            e.preventDefault();
-            if (currentPage * itemsPerPage < totalContacts) {
-              onPageChange(currentPage + 1);
-            }
-            break;
-        }
-        return;
-      }
-
       // Handle arrow key navigation
       let newFocusedCell: FocusedCell = null;
 
@@ -750,7 +729,7 @@ export default function ContactTable({
         />
         <div className="text-sm text-gray-600 flex items-center gap-2">
           <span>
-            {`${startIndex + 1}-${Math.min(startIndex + itemsPerPage, totalContacts)} of ${totalContacts}`}
+            {`${Math.min((currentPage - 1) * itemsPerPage + 1, totalContacts)}-${Math.min(currentPage * itemsPerPage, totalContacts)} of ${totalContacts}`}
           </span>
         </div>
       </div>
@@ -806,7 +785,7 @@ export default function ContactTable({
             </tr>
           </thead>
           <tbody>
-            {paginatedContacts.map((contact, rowIndex) => (
+            {contacts.map((contact, rowIndex) => (
               <motion.tr
                 key={contact.email || `row-${rowIndex}-${contact.name?.replace(/\s+/g, '-')}`}
                 initial={{ opacity: 0 }}
