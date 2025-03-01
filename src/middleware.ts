@@ -34,14 +34,23 @@ export async function middleware(request: NextRequest) {
   console.log('Middleware - Token check:', {
     pathname,
     hasToken: !!token,
-    isAuthPage: pathname.startsWith('/auth')
+    isAuthPage: pathname.startsWith('/auth'),
+    isApiRoute: pathname.startsWith('/api/')
   });
+
+  // Handle API routes first
+  if (pathname.startsWith('/api/')) {
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
 
   // Handle auth pages
   if (pathname.startsWith('/auth')) {
     if (token) {
       console.log('Middleware - Authenticated user on auth page, redirecting to contacts');
-      return NextResponse.redirect(new URL('/contacts', request.url));
+      return NextResponse.redirect(new URL('/contacts', request.url), { status: 307 });
     }
     return NextResponse.next();
   }
@@ -49,10 +58,13 @@ export async function middleware(request: NextRequest) {
   // Protected routes - require authentication
   if (!token) {
     console.log('Middleware - Unauthenticated user on protected route, redirecting to auth');
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL('/auth', request.url));
+    return NextResponse.redirect(new URL('/auth', request.url), { status: 307 });
+  }
+
+  // Handle non-existent routes for authenticated users
+  if (!pathname.match(/^\/($|contacts$|insights$|dashboard$)/)) {
+    console.log('Middleware - Authenticated user on invalid route, redirecting to contacts');
+    return NextResponse.redirect(new URL('/contacts', request.url), { status: 307 });
   }
 
   return NextResponse.next();

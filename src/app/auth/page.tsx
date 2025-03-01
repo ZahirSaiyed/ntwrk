@@ -25,21 +25,46 @@ export default function Auth() {
     });
     
     setIsLoaded(true);
-    if (status === 'authenticated') {
+    
+    // Only redirect if we're authenticated and on the auth page
+    if (status === 'authenticated' && window.location.pathname === '/auth') {
       console.log('Auth page - Redirecting to contacts:', {
         status,
         hasSession: !!session,
-        pathname: window.location.pathname
+        pathname: window.location.pathname,
+        redirecting: true
       });
-      router.push('/contacts');
+      
+      // Use replace instead of push to avoid adding to history
+      window.location.replace('/contacts');
+      return;
     }
-  }, [status, router, session]);
+  }, [status, session]);
+
+  // Don't render anything while loading
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-[#F4F4FF] flex items-center justify-center">
+        <div className="animate-pulse text-[#1E1E3F]">Loading...</div>
+      </div>
+    );
+  }
+
+  // If authenticated, show a loading state while redirecting
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-[#F4F4FF] flex items-center justify-center">
+        <div className="animate-pulse text-[#1E1E3F]">Redirecting...</div>
+      </div>
+    );
+  }
 
   const handleGoogleSignIn = async () => {
     console.log('Auth page - Starting Google sign in');
     try {
       await signIn('google', { 
-        callbackUrl: '/contacts'
+        callbackUrl: '/contacts',
+        redirect: true
       });
     } catch (error) {
       console.error('Auth page - Sign in error:', error);
