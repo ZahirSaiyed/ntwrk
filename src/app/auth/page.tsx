@@ -132,14 +132,7 @@ export default function Auth() {
 
             {/* Terms Text - Simplified */}
             <p className="text-center text-xs text-gray-500 mt-6">
-              By continuing, you agree to our{' '}
-              <Link href="/terms" className="text-[#1E1E3F] hover:text-[#2D2D5F] font-medium">
-                Terms
-              </Link>{' '}
-              &{' '}
-              <Link href="/privacy" className="text-[#1E1E3F] hover:text-[#2D2D5F] font-medium">
-                Privacy Policy
-              </Link>
+              By continuing, you agree to our Terms & Privacy Policy
             </p>
           </div>
         </div>

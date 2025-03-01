@@ -105,7 +105,7 @@ export const authOptions = {
     async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
       if (url.startsWith(baseUrl)) return url;
       else if (url.startsWith("/")) return `${baseUrl}${url}`;
-      return "/overview";
+      return "/contacts";
     },
   },
   pages: {
