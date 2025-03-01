@@ -6,6 +6,12 @@ export async function middleware(request: NextRequest) {
   // Get the pathname from the URL
   const { pathname } = request.nextUrl;
 
+  console.log('Middleware - Request:', {
+    pathname,
+    search: request.nextUrl.search,
+    isCallback: pathname.includes('/api/auth/callback')
+  });
+
   // Allow all auth-related routes and public assets
   if (
     pathname.startsWith('/_next') ||     // Next.js static files
@@ -16,6 +22,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/auth' ||              // Auth page
     pathname.startsWith('/auth/')        // Auth-related pages
   ) {
+    console.log('Middleware - Allowing public route:', pathname);
     return NextResponse.next();
   }
 
@@ -24,9 +31,16 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET 
   });
 
+  console.log('Middleware - Token check:', {
+    pathname,
+    hasToken: !!token,
+    isAuthPage: pathname.startsWith('/auth')
+  });
+
   // Handle auth pages
   if (pathname.startsWith('/auth')) {
     if (token) {
+      console.log('Middleware - Authenticated user on auth page, redirecting to contacts');
       return NextResponse.redirect(new URL('/contacts', request.url));
     }
     return NextResponse.next();
@@ -34,6 +48,7 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes - require authentication
   if (!token) {
+    console.log('Middleware - Unauthenticated user on protected route, redirecting to auth');
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

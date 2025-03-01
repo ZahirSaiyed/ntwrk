@@ -18,20 +18,33 @@ export default function Auth() {
   useEffect(() => {
     console.log('Auth page - Initial load:', {
       status,
-      isAuthenticated: status === 'authenticated'
+      isAuthenticated: status === 'authenticated',
+      hasSession: !!session,
+      pathname: window.location.pathname,
+      search: window.location.search
     });
     
     setIsLoaded(true);
     if (status === 'authenticated') {
-      console.log('Auth page - Redirecting to contacts');
+      console.log('Auth page - Redirecting to contacts:', {
+        status,
+        hasSession: !!session,
+        pathname: window.location.pathname
+      });
       router.push('/contacts');
     }
-  }, [status, router]);
+  }, [status, router, session]);
 
-  const handleGoogleSignIn = () => {
-    signIn('google', { 
-      callbackUrl: '/contacts'
-    });
+  const handleGoogleSignIn = async () => {
+    console.log('Auth page - Starting Google sign in');
+    try {
+      await signIn('google', { 
+        callbackUrl: '/contacts'
+      });
+    } catch (error) {
+      console.error('Auth page - Sign in error:', error);
+      setError('An error occurred during sign in. Please try again.');
+    }
   };
 
   return (

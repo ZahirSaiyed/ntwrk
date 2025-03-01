@@ -103,9 +103,31 @@ export const authOptions = {
       return session;
     },
     async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
-      if (url.startsWith(baseUrl)) return url;
-      else if (url.startsWith("/")) return `${baseUrl}${url}`;
-      return "/contacts";
+      console.log('Auth - Redirect:', { url, baseUrl });
+      
+      // Always allow callback URLs
+      if (url.includes('/api/auth')) {
+        console.log('Auth - Allowing callback URL:', url);
+        return url;
+      }
+      
+      // Handle relative URLs
+      if (url.startsWith('/')) {
+        const finalUrl = `${baseUrl}${url}`;
+        console.log('Auth - Redirecting relative URL:', { from: url, to: finalUrl });
+        return finalUrl;
+      }
+      
+      // Handle absolute URLs that match baseUrl
+      if (url.startsWith(baseUrl)) {
+        console.log('Auth - Allowing baseUrl match:', url);
+        return url;
+      }
+      
+      // Default fallback
+      const fallback = `${baseUrl}/contacts`;
+      console.log('Auth - Using fallback:', { from: url, to: fallback });
+      return fallback;
     },
   },
   pages: {
