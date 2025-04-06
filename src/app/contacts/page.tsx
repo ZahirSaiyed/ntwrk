@@ -26,6 +26,11 @@ import NetworkScore from '@/components/insights/NetworkScore';
 import ImportModal from '@/components/ImportModal';
 import { toast } from 'react-hot-toast';
 
+// Helper function to get the consistent session storage key
+const getContactsSessionKey = (userEmail: string | null | undefined) => {
+  return `contacts_${userEmail || 'unknown'}`;
+};
+
 // interface Contact {
 //   name: string;
 //   email: string;
@@ -107,31 +112,213 @@ export default function ContactsPage() {
   const [availableColumnsList, setAvailableColumnsList] = useState<Column[]>([]);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showCleanupAssistant, setShowCleanupAssistant] = useState(true);
+  const [showCleanupAssistant, setShowCleanupAssistant] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // Clear session cache if the user changes
+  useEffect(() => {
+    if (!session?.user?.email) {
+      // User logged out or session expired
+      // Clear session cache
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('contacts_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    }
+  }, [session?.user?.email]);
 
   const importContactsMutation = useMutation({
     mutationFn: importContactsFunction,
     onSuccess: (data) => {
-      setShowOnboarding(true);
+      // Always show cleanup assistant after importing contacts
+      if (data && data.length > 0) {
+        // Clear the "just closed" flag if it exists
+        sessionStorage.removeItem('cleanup_just_closed');
+        
+        // If there are new contacts, ensure the cleanup assistant shows
+        setShowCleanupAssistant(true);
+        
+        // Also ensure it shows after page refresh by setting the appropriate flags
+        if (session?.user?.email) {
+          // Remove shown-in-session marker
+          sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
+          // Force show cleanup
+          sessionStorage.setItem('force_show_cleanup', 'true');
+          // Mark data as not from cache
+          sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+        }
+        
+        setShowOnboarding(false); // We prefer showing the cleanup assistant directly
+        
+        toast.success(`Imported ${data.length} contacts`, {
+          duration: 3000,
+          style: { background: '#F4F4FF', color: '#1E1E3F' }
+        });
+      } else {
+        // No new contacts were imported
+        toast.success('No new contacts to import', {
+          duration: 3000,
+          style: { background: '#F4F4FF', color: '#1E1E3F' }
+        });
+      }
     }
   });
 
   const { data: contacts = [], isLoading, error } = useQuery({
     queryKey: ['contacts', session?.user?.email],
     queryFn: async () => {
+      // Check if we have cached data in sessionStorage
+      const sessionKey = getContactsSessionKey(session?.user?.email);
+      const cachedData = sessionStorage.getItem(sessionKey);
+      
+      if (cachedData) {
+        console.log('Loading contacts from session cache');
+        // Show a non-intrusive toast notification
+        setTimeout(() => {
+          toast.success('Contacts loaded from cache', { 
+            duration: 2000,
+            style: { background: '#F4F4FF', color: '#1E1E3F' },
+            icon: '⚡'
+          });
+        }, 100);
+        
+        // Set a flag to indicate data came from cache
+        sessionStorage.setItem('contacts_loaded_from_cache', 'true');
+        
+        return JSON.parse(cachedData);
+      }
+      
+      console.log('Fetching contacts from API');
       const response = await fetch('/api/contacts');
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Contact fetch error:', errorData);
+        // Clear potentially corrupted cache on error
+        sessionStorage.removeItem(sessionKey);
         throw new Error(errorData.error || 'Failed to fetch contacts');
       }
-      return response.json();
+      
+      const data = await response.json();
+      
+      // Store the fetched data in sessionStorage
+      sessionStorage.setItem(sessionKey, JSON.stringify(data));
+      
+      // Set a flag to indicate data came from API
+      sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+      
+      // Show a non-intrusive toast notification
+      setTimeout(() => {
+        toast.success('Contacts loaded from server', { 
+          duration: 2000,
+          style: { background: '#F4F4FF', color: '#1E1E3F' },
+          icon: '🔄'
+        });
+      }, 100);
+      
+      return data;
     },
     enabled: !!session?.user?.email,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   });
+
+  // Check if cleanup assistant has been shown before - this needs to run AFTER contacts are loaded
+  useEffect(() => {
+    if (!session?.user?.email || isLoading) return;
+    
+    console.log("Checking cleanup assistant status...");
+    
+    // First check if assistant was just manually closed in this session
+    // This is a strong signal that we should not show it again immediately
+    const justClosed = sessionStorage.getItem('cleanup_just_closed') === 'true';
+    if (justClosed) {
+      console.log("Cleanup assistant was just closed, not showing again");
+      setShowCleanupAssistant(false);
+      return;
+    }
+    
+    // Check if we should force show the cleanup assistant (after Clear Session or explicit refresh)
+    const forceShow = sessionStorage.getItem('force_show_cleanup') === 'true';
+    if (forceShow) {
+      // Clear the force show flag
+      sessionStorage.removeItem('force_show_cleanup');
+      console.log("Force showing cleanup assistant after session clear or refresh");
+      setShowCleanupAssistant(true);
+      return;
+    }
+    
+    // Check if data was loaded from cache
+    const loadedFromCache = sessionStorage.getItem('contacts_loaded_from_cache') === 'true';
+    
+    // Get the session key for this user's cleanup assistant state
+    const sessionKey = `cleanup-shown-in-session-${session.user.email}`;
+    
+    // Check if we've already shown the assistant in this session
+    const shownInCurrentSession = sessionStorage.getItem(sessionKey) === 'true';
+    
+    console.log("Cleanup assistant shown in session:", shownInCurrentSession, "Data loaded from cache:", loadedFromCache);
+    
+    // Only show cleanup assistant if:
+    // 1. It hasn't been shown yet in this session AND
+    // 2. Data was NOT loaded from cache (i.e., it was freshly loaded from the API)
+    if (!shownInCurrentSession && !loadedFromCache) {
+      console.log("Showing cleanup assistant (fresh API data)");
+      setShowCleanupAssistant(true);
+      // Mark that we've shown it in this session
+      sessionStorage.setItem(sessionKey, 'true');
+    } else {
+      console.log("Not showing cleanup assistant");
+      setShowCleanupAssistant(false);
+    }
+  }, [session?.user?.email, contacts, isLoading]); // Include contacts and loading state as dependencies
+
+  // Function to invalidate cache and refresh data
+  const refreshContacts = useCallback(() => {
+    const sessionKey = getContactsSessionKey(session?.user?.email);
+    sessionStorage.removeItem(sessionKey);
+    
+    // Set contacts_loaded_from_cache to false since we're forcing a refresh
+    sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+    
+    // Set force_show_cleanup to true since this is an explicit refresh
+    sessionStorage.setItem('force_show_cleanup', 'true');
+    sessionStorage.removeItem('cleanup_just_closed'); // Clear this flag
+    
+    queryClient.invalidateQueries({ queryKey: ['contacts', session?.user?.email] });
+  }, [queryClient, session?.user?.email]);
+
+  // For development/testing purposes - reset cleanup assistant
+  const resetCleanupAssistant = useCallback(() => {
+    if (session?.user?.email) {
+      // Clear session-based flag
+      sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
+      setShowCleanupAssistant(true);
+      toast.success('Cleanup assistant reset', { 
+        duration: 2000,
+        style: { background: '#F4F4FF', color: '#1E1E3F' }
+      });
+    }
+  }, [session?.user?.email]);
+
+  // For development/testing - simulate a new session without clearing permanent preferences
+  const resetSessionOnly = useCallback(() => {
+    if (session?.user?.email) {
+      // Set consistent flags for testing
+      sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
+      sessionStorage.setItem('force_show_cleanup', 'true');
+      sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+      sessionStorage.removeItem('cleanup_just_closed'); // Make sure we clear this
+      
+      // Show cleanup assistant immediately
+      setShowCleanupAssistant(true);
+      
+      toast.success('Cleanup assistant showing (simulating first visit)', { 
+        duration: 2000,
+        style: { background: '#F4F4FF', color: '#1E1E3F' }
+      });
+    }
+  }, [session?.user?.email]);
 
   // Filter out spam contacts for display
   const displayContacts = contacts.filter((contact: Contact) => 
@@ -342,6 +529,11 @@ export default function ContactsPage() {
           contact.email === updatedContact.email ? updatedContact : contact
         );
         console.log('Updated contacts:', newData);
+        
+        // Update sessionStorage with the new data
+        const sessionKey = getContactsSessionKey(session?.user?.email);
+        sessionStorage.setItem(sessionKey, JSON.stringify(newData));
+        
         return newData;
       });
     },
@@ -362,7 +554,46 @@ export default function ContactsPage() {
         contact => !existingEmails.has(contact.email.toLowerCase())
       );
       
-      return [...nonSpamContacts, ...uniqueNewContacts];
+      const updatedContacts = [...nonSpamContacts, ...uniqueNewContacts];
+      
+      // Update sessionStorage with the new data
+      const sessionKey = getContactsSessionKey(session?.user?.email);
+      sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
+      
+      // Always show cleanup assistant after import if there are new contacts
+      if (uniqueNewContacts.length > 0) {
+        // Clear the "just closed" flag if it exists
+        sessionStorage.removeItem('cleanup_just_closed');
+        
+        // Directly show cleanup assistant without relying on the useEffect
+        setShowCleanupAssistant(true);
+        
+        // Force the cleanup assistant to show even after refresh,
+        // but only if new contacts were added
+        if (session?.user?.email) {
+          // Set flags for consistent behavior
+          sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
+          sessionStorage.setItem('force_show_cleanup', 'true');
+          sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+        }
+        
+        toast.success(`Imported ${uniqueNewContacts.length} new contacts`, {
+          duration: 3000,
+          style: { background: '#F4F4FF', color: '#1E1E3F' }
+        });
+      } else if (newContacts.length > 0) {
+        toast.success('All contacts already exist in your network', {
+          duration: 3000,
+          style: { background: '#F4F4FF', color: '#1E1E3F' }
+        });
+      } else {
+        toast.error('No contacts found in import file', {
+          duration: 3000,
+          style: { background: '#FFEBEE', color: '#C62828' }
+        });
+      }
+      
+      return updatedContacts;
     });
   }, [queryClient, session?.user?.email]);
 
@@ -513,12 +744,13 @@ export default function ContactsPage() {
 
   const handleStartCleanup = () => {
     setShowOnboarding(false);
+    sessionStorage.removeItem('cleanup_just_closed'); // Clear this flag
     setShowCleanupAssistant(true);
   };
 
   const handleSkipOnboarding = () => {
     setShowOnboarding(false);
-    // Optionally, set a flag in localStorage or user settings to not show again
+    // We don't need to mark cleanup as permanently completed anymore
   };
 
   const quickFilters = [
@@ -536,6 +768,57 @@ export default function ContactsPage() {
               <p className="text-gray-600">Manage and organize your professional connections</p>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                onClick={refreshContacts}
+                className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+                title="Refresh contacts"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </button>
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={resetSessionOnly}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+                  title="Show cleanup assistant (testing only)"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Test Cleanup
+                </button>
+              )}
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={() => {
+                    // Clear all session data for testing
+                    sessionStorage.clear();
+                    
+                    // Set flags for the next load:
+                    // 1. Force show cleanup (for testing)
+                    sessionStorage.setItem('force_show_cleanup', 'true');
+                    // 2. Mark that we're not loading from cache
+                    sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+                    
+                    toast.success('All session data cleared', {
+                      duration: 2000,
+                      style: { background: '#F4F4FF', color: '#1E1E3F' }
+                    });
+                    
+                    // Reload the page to simulate a fresh visit
+                    setTimeout(() => window.location.reload(), 500);
+                  }}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl hover:bg-red-100 transition-all"
+                  title="Clear all session data (testing only)"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Clear Session
+                </button>
+              )}
               <button
                 onClick={() => setShowGroupModal(true)}
                 className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#1E1E3F] to-[#2D2D5F] text-white rounded-xl hover:opacity-90 transition-all"
@@ -743,6 +1026,10 @@ export default function ContactsPage() {
               isSpam: emails.includes(contact.email)
             } as ContactWithSpam));
             queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+            
+            // Update sessionStorage with the new data
+            const sessionKey = getContactsSessionKey(session?.user?.email);
+            sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
           }}
           onUndo={(email) => {
             const updatedContacts = contacts.map((contact: Contact) => ({
@@ -751,6 +1038,10 @@ export default function ContactsPage() {
                      email === contact.email ? false : (contact as ContactWithSpam).isSpam
             } as ContactWithSpam));
             queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+            
+            // Update sessionStorage with the new data
+            const sessionKey = getContactsSessionKey(session?.user?.email);
+            sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
           }}
           onExcludeFromAnalytics={(exclude) => {
             // Update analytics settings in user preferences
@@ -759,7 +1050,17 @@ export default function ContactsPage() {
               body: JSON.stringify({ excludeFromAnalytics: exclude })
             });
           }}
-          onClose={() => setShowCleanupAssistant(false)}
+          onClose={() => {
+            // Set flag that we just closed the assistant to prevent it from immediately showing again
+            sessionStorage.setItem('cleanup_just_closed', 'true');
+            
+            // After a short delay, remove the "just closed" flag to allow normal behavior later
+            setTimeout(() => {
+              sessionStorage.removeItem('cleanup_just_closed');
+            }, 5000); // 5 seconds is enough to prevent double-showing
+            
+            setShowCleanupAssistant(false);
+          }}
         />
       )}
 
