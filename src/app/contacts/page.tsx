@@ -25,6 +25,10 @@ import GroupExportModal from '@/components/GroupExportModal';
 import NetworkScore from '@/components/insights/NetworkScore';
 import ImportModal from '@/components/ImportModal';
 import { toast } from 'react-hot-toast';
+import { Icon } from '@/components/ui';
+import FilterChip from '@/components/ui/filters/FilterChip';
+import { IconName } from '@/components/ui/icons/Icon';
+import React from 'react';
 
 // Helper function to get the consistent session storage key
 const getContactsSessionKey = (userEmail: string | null | undefined) => {
@@ -37,7 +41,7 @@ const getContactsSessionKey = (userEmail: string | null | undefined) => {
 //   lastContacted: string;
 // }
 
-type FilterType = 'active' | 'noReply' | 'needsAttention' | 'all' | 'followup' | 'close' | `group-${string}`;
+type FilterType = 'all' | `group-${string}`;
 
 type SortConfig = {
   key: keyof Contact | CustomColumnKey | null;
@@ -73,6 +77,25 @@ const importContactsFunction = async () => {
   if (!response.ok) throw new Error('Failed to import contacts');
   return response.json();
 };
+
+// Define types for filter items
+type BaseFilterItem = {
+  id: string;
+  label: string;
+  isGroup: boolean;
+}
+
+type QuickFilterItem = BaseFilterItem & {
+  icon: IconName;
+  isGroup: false;
+}
+
+type GroupFilterItem = BaseFilterItem & {
+  isGroup: true;
+  groupData: {id: string, name: string, members: string[]};
+}
+
+type FilterItem = QuickFilterItem | GroupFilterItem;
 
 export default function ContactsPage() {
   const router = useRouter();
@@ -753,8 +776,8 @@ export default function ContactsPage() {
     // We don't need to mark cleanup as permanently completed anymore
   };
 
-  const quickFilters = [
-    { id: 'all', label: 'All', icon: '👥', isGroup: false }
+  const quickFilters: QuickFilterItem[] = [
+    { id: 'all', label: 'All', icon: 'Users', isGroup: false }
   ];
 
   return (
@@ -849,65 +872,32 @@ export default function ContactsPage() {
             </div>
           </div>
 
-          {/* Enhanced Filter Pills */}
-          <div className="flex items-center gap-4">
-            {[...quickFilters, ...groups.map(group => ({
-              id: `group-${group.id}`,
-              label: group.name,
-              icon: '👥',
-              isGroup: true,
-              groupData: group
-            }))].map((filterItem: {
-              id: string;
-              label: string;
-              icon: string;
-              isGroup: boolean;
-              groupData?: {id: string, name: string, members: string[]};
-            }) => (
-              <div key={filterItem.id} className="relative group">
-                <button
-                  onClick={() => setFilter(filterItem.id as FilterType)}
-                  className={`
-                    px-4 py-2 rounded-full text-sm font-medium transition-all
-                    ${filter === filterItem.id
-                      ? 'bg-[#1E1E3F] text-white' 
-                      : 'bg-white text-gray-600 hover:bg-gray-50'
-                    }
-                  `}
-                >
-                  {filterItem.icon} {filterItem.id.startsWith('group-') 
-                    ? filterItem.label 
-                    : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
-                </button>
-                
-                {filterItem.isGroup && (
-                  <div className="absolute -top-2 -right-2 flex gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditGroup(filterItem.groupData!);
-                      }}
-                      className="w-5 h-5 bg-blue-500 text-white rounded-full 
-                        opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                      title="Edit group"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteGroup(filterItem.id.replace('group-', ''));
-                      }}
-                      className="w-5 h-5 bg-red-500 text-white rounded-full 
-                        opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                      title="Delete group"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+          {/* Filter section */}
+          <div className="mb-6 overflow-x-auto pb-2 hide-scrollbar">
+            <div className="flex gap-3 items-center">
+              {[...quickFilters, ...groups.map(group => ({
+                id: `group-${group.id}`, 
+                label: group.name, 
+                isGroup: true,
+                groupData: group
+              } as GroupFilterItem))].map((filterItem: FilterItem) => (
+                <div key={filterItem.id} className="relative group">
+                  <FilterChip
+                    label={filterItem.id.startsWith('group-') 
+                      ? filterItem.label 
+                      : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
+                    icon={filterItem.isGroup ? 'Users' as IconName : filterItem.icon}
+                    selected={filter === filterItem.id}
+                    onClick={() => setFilter(filter === filterItem.id ? 'all' : filterItem.id as FilterType)}
+                    badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
+                    tooltipContent={filterItem.isGroup 
+                      ? `Filter by ${filterItem.label} group members` 
+                      : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
+                    showSelectedIcon={true}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

@@ -65,6 +65,12 @@ export default function GroupModal({ isOpen, onClose, contacts, onGroupCreate, e
                   placeholder="e.g., Investors, Tech Industry, Healthcare, Finance..."
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && groupName.trim()) {
+                      e.preventDefault();
+                      setStep('select');
+                    }
+                  }}
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent"
                   autoFocus
                   maxLength={50}

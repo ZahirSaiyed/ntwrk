@@ -74,7 +74,9 @@ export const Button: React.FC<ButtonProps> = ({
     transition-all
     duration-200
     focus:outline-none
-    ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+    overflow-hidden
+    select-none
+    ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
     ${className}
   `;
 
