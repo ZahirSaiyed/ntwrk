@@ -71,7 +71,7 @@ export async function GET(
             userId: 'me',
             id: message.id || '',
             format: 'metadata',
-            metadataHeaders: ['From', 'To', 'Cc', 'Bcc', 'Date', 'References', 'In-Reply-To', 'Message-ID', 'Subject']
+            metadataHeaders: ['From', 'To', 'Cc', 'Bcc', 'Date', 'References', 'In-Reply-To', 'Message-ID']
           });
 
           const headers = messageDetails.data.payload?.headers as MessageHeader[];
