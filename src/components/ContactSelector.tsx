@@ -212,61 +212,65 @@ export default function ContactSelector({
       {/* Main Content Area */}
       <div className="space-y-3 flex-1 overflow-y-auto">
         {/* Search and Filter Section */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-          {/* Left: Search input */}
-          <div className="relative w-full sm:max-w-[65%]">
-            <input
-              type="text"
-              placeholder="Search contacts..."
-              className="w-full px-4 py-2.5 pl-10 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-              <Icon name="Search" size={18} />
+        <div className="flex flex-col w-full">
+          {/* Search input - Enhanced design */}
+          <div className="relative w-full">
+            <div className="flex items-center">
+              <div className="absolute left-4 text-gray-400 pointer-events-none">
+                <Icon name="Search" size={18} />
+              </div>
+              <input
+                type="text"
+                placeholder="Search contacts..."
+                className="w-full h-11 px-4 py-2 pl-11 bg-white border border-gray-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-[#1E1E3F] transition-all duration-200 ease-in-out"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+              {filter && (
+                <button 
+                  onClick={() => setFilter('')}
+                  className="absolute right-4 text-gray-400 hover:text-gray-600 transition-colors duration-150"
+                >
+                  <Icon name="X" size={16} />
+                </button>
+              )}
             </div>
           </div>
           
-          {/* Right: Action buttons - will align to edge of modal */}
-          <div className="flex justify-end gap-3 w-full sm:w-auto sm:ml-auto">
-            <Button 
-              variant={selected.size === filteredContacts.length ? 'tertiary' : 'primary'}
-              onClick={() => {
-                const newSelected = new Set([
-                  ...Array.from(selected),  // Keep existing selections
-                  ...filteredContacts.map(contact => contact.email)  // Add new filtered contacts
-                ]);
-                setSelected(
-                  selected.size === filteredContacts.length ? new Set() : newSelected
-                );
-              }}
-              icon={selected.size === filteredContacts.length ? 'RotateCcw' : 'CheckSquare'}
-              iconPosition="right"
-              size="sm"
-              className="whitespace-nowrap px-3 min-w-[120px] flex-shrink-0"
-            >
-              {selected.size === filteredContacts.length ? 'Deselect All' : 'Select All'}
-            </Button>
-            <Button 
-              variant="danger"
-              size="sm"
-              onClick={() => {
-                setFilter('');
-                setSelected(new Set());
-                setActiveFilters(new Set());
-              }}
-              icon="X"
-              iconPosition="left"
-              className="whitespace-nowrap px-3 flex-shrink-0"
-            >
-              Clear All
-            </Button>
+          {/* Action buttons row */}
+          <div className="flex justify-between items-center mt-3">
+            {/* Filter count */}
+            {activeFilters.size > 0 && (
+              <div className="text-xs text-[#1E1E3F] font-medium">
+                <span className="bg-[#F4F4FF] px-2 py-1 rounded-full">
+                  {activeFilters.size} filter{activeFilters.size !== 1 ? 's' : ''} active
+                </span>
+              </div>
+            )}
+            
+            {/* Clear All button - Moved to right side */}
+            <div className="ml-auto">
+              <Button 
+                variant="tertiary"
+                size="sm"
+                onClick={() => {
+                  setFilter('');
+                  setSelected(new Set());
+                  setActiveFilters(new Set());
+                }}
+                icon="RotateCcw"
+                iconPosition="left"
+                className="whitespace-nowrap text-sm font-medium"
+              >
+                Reset All
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Quick Filters Section */}
         <div className="mt-2">
-          <div className="text-xs font-medium text-gray-500 mb-1.5">Quick Filters</div>
+          <div className="text-xs font-medium text-gray-700 mb-2">Quick Filters</div>
           <div className="flex gap-2 overflow-x-auto pb-2 filter-chips-container">
             <FilterChip
               label="Same Domain"
@@ -320,10 +324,44 @@ export default function ContactSelector({
           </div>
         )}
 
-        {/* Contact List */}
+        {/* Contact List Header with Select All button */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-5 px-4 py-3 bg-white border border-gray-200 rounded-t-lg border-b shadow-sm gap-2">
+          <div className="text-sm font-medium text-gray-700 flex items-center">
+            <span className="bg-[#F4F4FF] text-[#1E1E3F] px-2 py-0.5 rounded-full text-xs font-semibold mr-2">
+              {filteredContacts.length}
+            </span>
+            <span>
+              contact{filteredContacts.length !== 1 ? 's' : ''} available
+            </span>
+          </div>
+          {filteredContacts.length > 0 && (
+            <Button 
+              variant={selected.size === filteredContacts.length ? 'tertiary' : 'primary'}
+              onClick={() => {
+                const newSelected = new Set([
+                  ...Array.from(selected),  // Keep existing selections
+                  ...filteredContacts.map(contact => contact.email)  // Add new filtered contacts
+                ]);
+                setSelected(
+                  selected.size === filteredContacts.length ? new Set() : newSelected
+                );
+              }}
+              icon={selected.size === filteredContacts.length ? 'RotateCcw' : 'CheckSquare'}
+              iconPosition="right"
+              size="sm"
+              className="whitespace-nowrap px-4 min-w-[120px] flex-shrink-0 w-full sm:w-auto transition-all duration-200"
+            >
+              {selected.size === filteredContacts.length && filteredContacts.length > 0 
+                ? `Deselect All (${filteredContacts.length})` 
+                : 'Select All'}
+            </Button>
+          )}
+        </div>
+
+        {/* Contact List (updated to remove top rounded corners, since header has them now) */}
         <div 
           ref={contactListRef}
-          className="overflow-y-auto border border-gray-100 rounded-lg mt-4" 
+          className="overflow-y-auto border border-gray-200 border-t-0 rounded-b-lg shadow-sm" 
           style={{ maxHeight: 'calc(70vh - 280px)' }}
           tabIndex={0}
           onKeyDown={handleKeyDown}
@@ -335,13 +373,13 @@ export default function ContactSelector({
                 data-contact-item
                 onClick={() => toggleContactSelection(contact.email)}
                 onFocus={() => setFocusedIndex(index)}
-                className={`flex items-center justify-between p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 group cursor-pointer min-h-[44px] transition-colors duration-150
-                  ${focusedIndex === index ? 'bg-[#F4F4FF]/30 ring-2 ring-[#1E1E3F]/20' : ''}
+                className={`flex items-center justify-between px-4 py-3 hover:bg-[#F9F9FF] border-b border-gray-100 last:border-b-0 group cursor-pointer transition-colors duration-150 ease-in-out
+                  ${focusedIndex === index ? 'bg-[#F4F4FF]/50 shadow-sm' : ''}
                 `}
                 tabIndex={0}
               >
                 <div className="flex items-center">
-                  <div className="flex items-center justify-center min-w-[44px] min-h-[44px] -ml-1">
+                  <div className="flex items-center justify-center mr-3">
                     <input
                       type="checkbox"
                       checked={selected.has(contact.email)}
@@ -349,12 +387,12 @@ export default function ContactSelector({
                         e.stopPropagation();
                         toggleContactSelection(contact.email);
                       }}
-                      className="h-5 w-5 rounded border-gray-300 text-[#1E1E3F] focus:ring-[#1E1E3F] mr-4 transition-opacity duration-150 ease-in-out"
+                      className="h-5 w-5 rounded-md border-gray-300 text-[#1E1E3F] focus:ring-[#1E1E3F] transition-opacity duration-150 ease-in-out"
                     />
                   </div>
                   <div>
                     <h4 className="font-medium text-gray-900">{contact.name}</h4>
-                    <p className="text-sm text-gray-500">{contact.email}</p>
+                    <p className="text-sm text-gray-500 mt-0.5">{contact.email}</p>
                   </div>
                 </div>
                 <Button
@@ -371,7 +409,7 @@ export default function ContactSelector({
                     similarContacts.forEach(c => newSelected.add(c.email));
                     setSelected(newSelected);
                   }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-white/80"
                   icon="Users"
                   iconPosition="left"
                 >
@@ -380,15 +418,17 @@ export default function ContactSelector({
               </div>
             ))
           ) : (
-            <div className="p-8 text-center">
-              <Icon name="Search" size={32} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">No contacts match your filters</p>
+            <div className="py-10 px-4 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-50 mb-4">
+                <Icon name="Search" size={32} className="text-gray-300" />
+              </div>
+              <p className="text-gray-600 font-medium">No contacts match your filters</p>
               <button
                 onClick={() => {
                   setFilter('');
                   setActiveFilters(new Set());
                 }}
-                className="text-[#1E1E3F] font-medium mt-2 text-sm hover:underline"
+                className="mt-3 text-[#1E1E3F] font-medium text-sm hover:underline focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:ring-offset-2 rounded-md px-2 py-1 transition-all duration-150"
               >
                 Clear all filters
               </button>
@@ -464,7 +504,19 @@ export default function ContactSelector({
         .fadeIn {
           animation-name: fadeIn;
         }
+        
+        /* Add animations for improved UI experience */
+        input[type="text"]:focus {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(30, 30, 63, 0.08);
+        }
+        
+        button:active {
+          transform: scale(0.97);
+        }
       `}</style>
     </div>
   );
 }
+
+
