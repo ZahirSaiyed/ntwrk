@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Icon, IconName } from '../icons/Icon';
 import theme from '../theme';
+import { useTooltip } from '../TooltipProvider';
 
 export interface FilterChipProps {
   label: string;
@@ -44,22 +45,50 @@ export const FilterChip: React.FC<FilterChipProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
   const chipRef = useRef<HTMLButtonElement>(null);
+  const { showTooltip, hideTooltip } = useTooltip();
+  const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Handle tooltip logic
+  // Handle tooltip logic with improved delay
   const handleMouseEnter = () => {
     setIsHovered(true);
-    if (tooltipContent) {
-      const timeout = setTimeout(() => setShowTooltip(true), 500);
-      return () => clearTimeout(timeout);
+    if (tooltipContent && chipRef.current) {
+      // Clear any existing timeout
+      if (tooltipTimerRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+      }
+      
+      // Use a timeout to prevent showing tooltip on quick mouse movements
+      // Using 300ms for a more responsive feel like Apple
+      tooltipTimerRef.current = setTimeout(() => {
+        showTooltip(tooltipContent, chipRef.current!.getBoundingClientRect());
+      }, 300);
     }
   };
   
   const handleMouseLeave = () => {
     setIsHovered(false);
-    setShowTooltip(false);
+    
+    // Clear any pending show timeouts
+    if (tooltipTimerRef.current) {
+      clearTimeout(tooltipTimerRef.current);
+      tooltipTimerRef.current = null;
+    }
+    
+    // Hide tooltip immediately for snappiness (like Shopify)
+    if (tooltipContent) {
+      hideTooltip();
+    }
   };
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (tooltipTimerRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+      }
+    };
+  }, []);
 
   // Handle keyboard interaction
   const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -169,17 +198,6 @@ export const FilterChip: React.FC<FilterChipProps> = ({
           </span>
         )}
       </button>
-      
-      {/* Tooltip */}
-      {tooltipContent && showTooltip && (
-        <div 
-          className="absolute -top-9 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap z-50 shadow-md"
-          role="tooltip"
-        >
-          {tooltipContent}
-          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-gray-900 rotate-45"></div>
-        </div>
-      )}
     </div>
   );
 };

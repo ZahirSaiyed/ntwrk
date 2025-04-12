@@ -29,6 +29,7 @@ import { Icon } from '@/components/ui';
 import FilterChip from '@/components/ui/filters/FilterChip';
 import { IconName } from '@/components/ui/icons/Icon';
 import React from 'react';
+import DomainStats from '@/components/DomainStats';
 
 // Helper function to get the consistent session storage key
 const getContactsSessionKey = (userEmail: string | null | undefined) => {
@@ -137,6 +138,12 @@ export default function ContactsPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showCleanupAssistant, setShowCleanupAssistant] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // Add state to track if domain filter mode is active
+  const [isDomainFilterMode, setIsDomainFilterMode] = useState(false);
+
+  // Add state for selected domain in domain stats
+  const [selectedDomain, setSelectedDomain] = useState<string | undefined>(undefined);
 
   // Clear session cache if the user changes
   useEffect(() => {
@@ -411,21 +418,102 @@ export default function ContactsPage() {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+  // Add utility functions for smart domain filtering
+  const extractDomain = (email: string): string => {
+    const parts = email.split('@');
+    return parts.length > 1 ? parts[1].toLowerCase() : '';
+  };
+
+  const isDomainSearch = (term: string): boolean => {
+    // Checks if a search term appears to be a domain or partial domain
+    // Examples: "amazon", "gmail", "amazon.com", etc.
+    return !term.includes('@') && !term.includes(' ') && (
+      term.includes('.') || 
+      ['gmail', 'yahoo', 'hotmail', 'outlook', 'amazon', 'apple', 'google', 'facebook', 
+       'microsoft', 'aol', 'proton', 'icloud', 'me', 'live', 'msn', 'zoho'].includes(term.toLowerCase())
+    );
+  };
+
+  const domainMatches = (email: string, domainTerm: string): boolean => {
+    const domain = extractDomain(email);
+    const searchTerm = domainTerm.toLowerCase();
+
+    // Check for exact matches
+    if (domain === searchTerm) return true;
+    
+    // Handle common variations
+    if (searchTerm === 'gmail' && domain === 'gmail.com') return true;
+    if (searchTerm === 'yahoo' && (domain === 'yahoo.com' || domain === 'yahoo.co.uk')) return true;
+    if (searchTerm === 'hotmail' && (domain === 'hotmail.com' || domain === 'hotmail.co.uk')) return true;
+    if (searchTerm === 'outlook' && domain === 'outlook.com') return true;
+    if (searchTerm === 'icloud' && domain === 'icloud.com') return true;
+    if (searchTerm === 'me' && domain === 'me.com') return true;
+    if (searchTerm === 'live' && domain === 'live.com') return true;
+    if (searchTerm === 'msn' && domain === 'msn.com') return true;
+    
+    // Handle partial domain matches (e.g., "amazon" matches "amazon.com", "amazon.co.uk", etc.)
+    if (domain.startsWith(searchTerm + '.')) return true;
+    
+    // Special case for domain search with TLD
+    if (searchTerm.includes('.')) {
+      // Allow subdomain matches, e.g., "mail.google.com" when searching for "google.com"
+      const searchParts = searchTerm.split('.');
+      const domainParts = domain.split('.');
+      
+      // If the domain term has fewer parts than the full domain
+      if (searchParts.length < domainParts.length) {
+        // Extract the last N parts of the domain where N is the length of the search term parts
+        const relevantDomainParts = domainParts.slice(-searchParts.length);
+        return relevantDomainParts.join('.') === searchTerm;
+      }
+    }
+    
+    return false;
+  };
+
+  // Add function to group contacts by domain
+  const groupContactsByDomain = (contacts: Contact[]) => {
+    // Create a map to group contacts by domain
+    const domainGroups = new Map<string, Contact[]>();
+    
+    contacts.forEach(contact => {
+      const domain = extractDomain(contact.email);
+      if (!domainGroups.has(domain)) {
+        domainGroups.set(domain, []);
+      }
+      domainGroups.get(domain)!.push(contact);
+    });
+    
+    // Convert map to array of [domain, contacts] pairs and sort by domain
+    return Array.from(domainGroups.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]));
+  };
+
+  // Modified getFilteredContacts to handle domain grouping
   const getFilteredContacts = (contacts: Contact[], searchTerm: string, activeFilter: FilterType) => {
     let filteredResults = [...displayContacts];
     
     // Apply search filter
     if (searchTerm) {
       const searchTerms = searchTerm.toLowerCase().split(' ');
+      
       filteredResults = filteredResults.filter(contact => 
-        searchTerms.every(term =>
-          contact.name.toLowerCase().includes(term) ||
-          contact.email.toLowerCase().includes(term) ||
-          (contact.company && contact.company.toLowerCase().includes(term)) ||
-          contact.customFields?.some((field: CustomField) => 
-            field.value.toLowerCase().includes(term)
-          )
-        )
+        searchTerms.every(term => {
+          // Check for domain-like search term
+          if (isDomainSearch(term)) {
+            return domainMatches(contact.email, term);
+          }
+          
+          // Regular search criteria
+          return (
+            contact.name.toLowerCase().includes(term) ||
+            contact.email.toLowerCase().includes(term) ||
+            (contact.company && contact.company.toLowerCase().includes(term)) ||
+            contact.customFields?.some((field: CustomField) => 
+              field.value.toLowerCase().includes(term)
+            )
+          );
+        })
       );
     }
     
@@ -488,8 +576,16 @@ export default function ContactsPage() {
     
     return filteredResults;
   };
-
+  
   const filteredContacts = getFilteredContacts(contacts, search, filter);
+  
+  // Get domain-grouped contacts when in domain filter mode and domain search is active
+  const domainGroupedContacts = useMemo(() => {
+    if (isDomainFilterMode && search && isDomainSearch(search)) {
+      return groupContactsByDomain(filteredContacts);
+    }
+    return null;
+  }, [filteredContacts, isDomainFilterMode, search]);
 
   const handleSort = (key: keyof Contact | CustomColumnKey) => {
     setSortConfig(prevConfig => {
@@ -641,6 +737,20 @@ export default function ContactsPage() {
     toast[type](message);
   };
 
+  // Handle domain selection from domain stats
+  const handleDomainSelect = (domain: string) => {
+    if (domain === selectedDomain) {
+      setSelectedDomain(undefined);
+      setSearch(''); // Clear search when deselecting
+    } else {
+      setSelectedDomain(domain);
+      setSearch(domain); // Set search to selected domain
+      if (!isDomainFilterMode) {
+        setIsDomainFilterMode(true); // Ensure domain filter mode is active
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
@@ -786,8 +896,34 @@ export default function ContactsPage() {
   };
 
   const quickFilters: QuickFilterItem[] = [
-    { id: 'all', label: 'All', icon: 'Users', isGroup: false }
+    { id: 'all', label: 'All', icon: 'Users', isGroup: false },
+    { id: 'domain', label: 'By Domain', icon: 'Globe', isGroup: false }
   ];
+
+  // Update the filter handling to include domain filter mode
+  const handleFilterClick = (filterId: string) => {
+    if (filterId === 'domain') {
+      setIsDomainFilterMode(!isDomainFilterMode);
+      // If turning on domain filter mode, clear search if it doesn't look like a domain
+      if (!isDomainFilterMode && search && !isDomainSearch(search)) {
+        setSearch('');
+      }
+    } else {
+      setFilter(filter === filterId ? 'all' : filterId as FilterType);
+      // Turn off domain filter mode when selecting other filters
+      if (isDomainFilterMode) {
+        setIsDomainFilterMode(false);
+      }
+    }
+  };
+
+  // Add a placeholder hint for domain search
+  const getSearchPlaceholder = () => {
+    if (isDomainFilterMode) {
+      return "Type a domain or company name (e.g., amazon, gmail.com)...";
+    }
+    return "Search by name, email, company...";
+  };
 
   return (
     <AppLayout>
@@ -896,12 +1032,14 @@ export default function ContactsPage() {
                       ? filterItem.label 
                       : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
                     icon={filterItem.isGroup ? 'Users' as IconName : filterItem.icon}
-                    selected={filter === filterItem.id}
-                    onClick={() => setFilter(filter === filterItem.id ? 'all' : filterItem.id as FilterType)}
+                    selected={filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id}
+                    onClick={() => handleFilterClick(filterItem.id)}
                     badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
                     tooltipContent={filterItem.isGroup 
                       ? `Filter by ${filterItem.label} group contacts` 
-                      : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
+                      : filterItem.id === 'domain'
+                        ? 'Filter contacts by domain (e.g., gmail, amazon.com)'
+                        : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
                     showSelectedIcon={true}
                   />
                 </div>
@@ -918,8 +1056,8 @@ export default function ContactsPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, email, company..."
-                className="w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent transition-all"
+                placeholder={getSearchPlaceholder()}
+                className={`w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent transition-all ${(isDomainFilterMode || (search && isDomainSearch(search))) ? 'border-[#4B4BA6] bg-[#F4F4FF]' : ''}`}
               />
               <svg 
                 className="w-6 h-6 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -934,6 +1072,11 @@ export default function ContactsPage() {
                   d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                 />
               </svg>
+              {search && isDomainSearch(search) && (
+                <div className="absolute right-16 top-1/2 -translate-y-1/2 text-[#4B4BA6] bg-[#F4F4FF] px-2 py-0.5 rounded text-xs font-medium">
+                  Domain Search
+                </div>
+              )}
               {search && (
                 <button
                   onClick={() => setSearch('')}
@@ -943,8 +1086,43 @@ export default function ContactsPage() {
                 </button>
               )}
             </div>
+            {(isDomainFilterMode || (search && isDomainSearch(search))) && (
+              <div className="mt-2 text-xs flex items-start">
+                <svg className="w-4 h-4 mr-1 text-[#4B4BA6] shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 16V12M12 8H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" 
+                        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <div className="text-gray-600">
+                  <p className="font-medium text-[#4B4BA6]">Smart Domain Search</p>
+                  <p>
+                    {search ? (
+                      <>Showing contacts with <span className="font-semibold">{search}</span> and related domains like <span className="font-semibold">{search.includes('.') ? search : `${search}.com`}</span></>
+                    ) : (
+                      <>Type a company or domain name (e.g., <span className="font-medium">amazon</span>, <span className="font-medium">gmail</span>) to filter your contacts</>
+                    )}
+                  </p>
+                  {search && !search.includes('@') && !search.includes(' ') && (
+                    <p className="mt-1 text-gray-500">
+                      Note: Partial matches like "{search}" will match "{search}.com", "{search}.org", etc.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Domain Stats Section - Only show when domain filter mode is active */}
+        {isDomainFilterMode && (
+          <div className="mb-4">
+            <DomainStats 
+              contacts={displayContacts}
+              extractDomain={extractDomain}
+              selectedDomain={selectedDomain}
+              onDomainSelect={handleDomainSelect}
+            />
+          </div>
+        )}
 
         {/* Enhanced Table Section */}
         <div className="bg-white rounded-3xl shadow-sm">
@@ -954,6 +1132,11 @@ export default function ContactsPage() {
               <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
                 {filteredContacts.length} contacts
               </span>
+              {isDomainFilterMode && search && isDomainSearch(search) && domainGroupedContacts && (
+                <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
+                  {domainGroupedContacts.length} domains
+                </span>
+              )}
             </div>
             <ColumnCustomizer
               availableColumns={availableColumnsList}
@@ -968,21 +1151,56 @@ export default function ContactsPage() {
             />
           </div>
 
-          <ContactTable 
-            contacts={filteredContacts}
-            onContactClick={setSelectedContact}
-            onContactUpdate={handleContactUpdate}
-            currentPage={currentPage}
-            itemsPerPage={itemsPerPage}
-            columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
-            className="divide-y divide-gray-100"
-            sortConfig={sortConfig}
-            onSort={handleSort}
-            showToast={showToast}
-            totalContacts={filteredContacts.length}
-            onPageChange={(page) => setCurrentPage(page)}
-            onPageSizeChange={(size) => setItemsPerPage(size)}
-          />
+          {isDomainFilterMode && search && isDomainSearch(search) && domainGroupedContacts ? (
+            // Domain-grouped view
+            <div className="divide-y divide-gray-100">
+              {domainGroupedContacts.map(([domain, domainContacts]) => (
+                <div key={domain} className="py-2">
+                  <div className="px-4 py-2 bg-gray-50 flex items-center">
+                    <svg className="w-4 h-4 mr-2 text-[#4B4BA6]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M3.6 9h16.8M3.6 15h16.8M12 3a4.5 4.5 0 000 18 4.5 4.5 0 000-18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span className="font-medium text-sm text-[#1E1E3F]">{domain}</span>
+                    <span className="ml-2 text-xs text-gray-500">({domainContacts.length} contacts)</span>
+                  </div>
+                  <ContactTable 
+                    contacts={domainContacts}
+                    onContactClick={setSelectedContact}
+                    onContactUpdate={handleContactUpdate}
+                    currentPage={1}
+                    itemsPerPage={domainContacts.length}
+                    columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
+                    className="divide-y divide-gray-100"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                    showToast={showToast}
+                    totalContacts={domainContacts.length}
+                    onPageChange={() => {}}
+                    onPageSizeChange={() => {}}
+                    hideHeader={true}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Standard view
+            <ContactTable 
+              contacts={filteredContacts}
+              onContactClick={setSelectedContact}
+              onContactUpdate={handleContactUpdate}
+              currentPage={currentPage}
+              itemsPerPage={itemsPerPage}
+              columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
+              className="divide-y divide-gray-100"
+              sortConfig={sortConfig}
+              onSort={handleSort}
+              showToast={showToast}
+              totalContacts={filteredContacts.length}
+              onPageChange={(page) => setCurrentPage(page)}
+              onPageSizeChange={(size) => setItemsPerPage(size)}
+            />
+          )}
         </div>
       </div>
 

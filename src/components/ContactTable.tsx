@@ -27,6 +27,7 @@ interface ContactTableProps {
   showToast: (message: string, type: 'success' | 'error') => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+  hideHeader?: boolean;
 }
 
 type Column = {
@@ -274,6 +275,7 @@ export default function ContactTable({
   onPageChange,
   onPageSizeChange,
   totalContacts,
+  hideHeader,
 }: ContactTableProps) {
   const safeColumns = columns?.length > 0 ? columns : [
     {
@@ -764,30 +766,32 @@ export default function ContactTable({
         aria-label="Contacts table"
       >
         <table className={`w-full ${className}`}>
-          <thead>
-            <tr className="bg-[#F4F4FF]">
-              {safeColumns.map((column) => (
-                <th
-                  key={column.key}
-                  className="px-6 py-4 text-left text-sm font-medium text-gray-900 cursor-pointer group"
-                  onClick={() => onSort(column.key as keyof Contact | `custom_${string}`)}
-                >
-                  <div className="flex items-center gap-2">
-                    {column.label}
-                    <span className="text-[#1E1E3F]">
-                      {sortConfig.key === column.key ? (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      ) : (
-                        <span className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                          ↕
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
+          {!hideHeader && (
+            <thead>
+              <tr className="bg-[#F4F4FF]">
+                {safeColumns.map((column) => (
+                  <th
+                    key={column.key}
+                    className="px-6 py-4 text-left text-sm font-medium text-gray-900 cursor-pointer group"
+                    onClick={() => onSort(column.key as keyof Contact | `custom_${string}`)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {column.label}
+                      <span className="text-[#1E1E3F]">
+                        {sortConfig.key === column.key ? (
+                          sortConfig.direction === 'asc' ? '↑' : '↓'
+                        ) : (
+                          <span className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                            ↕
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          )}
           <tbody>
             {paginatedContacts.map((contact) => (
               <motion.tr
