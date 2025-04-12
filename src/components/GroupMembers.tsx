@@ -24,7 +24,7 @@ export default function GroupMembers({
         <h4>{title}</h4>
       </div>
       {description && <p className="text-sm text-gray-600">{description}</p>}
-      {/* Add member list rendering as needed */}
+      {/* Add contact list rendering as needed */}
     </div>
   );
 }

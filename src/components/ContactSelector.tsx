@@ -200,7 +200,7 @@ export default function ContactSelector({
       <div className="flex items-center justify-between pb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Select Contacts</h2>
-          <p className="text-sm text-gray-500 mt-1">Add members to "{groupName}"</p>
+          <p className="text-sm text-gray-500 mt-1">Add contacts to "{groupName}"</p>
         </div>
         <div className="text-sm text-gray-500">
           {selected.size > 0 && (

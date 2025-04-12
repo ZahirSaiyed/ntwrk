@@ -532,7 +532,7 @@ export default function ContactsPage() {
   useEffect(() => {
     if (customFieldsData.length > 0) {
       // Check if we actually need to update to avoid unnecessary state changes
-      const newFields = customFieldsData.filter(key => !activeColumns.includes(key));
+      const newFields = customFieldsData.filter((key: ColumnKey) => !activeColumns.includes(key));
       if (newFields.length > 0) {
         updateColumns(customFieldsData);
       }
@@ -900,7 +900,7 @@ export default function ContactsPage() {
                     onClick={() => setFilter(filter === filterItem.id ? 'all' : filterItem.id as FilterType)}
                     badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
                     tooltipContent={filterItem.isGroup 
-                      ? `Filter by ${filterItem.label} group members` 
+                      ? `Filter by ${filterItem.label} group contacts` 
                       : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
                     showSelectedIcon={true}
                   />
