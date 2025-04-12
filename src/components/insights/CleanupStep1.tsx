@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { SpamDetectionResult } from '@/utils/spamDetection';
 import ProgressBar from '@/components/ProgressBar';
+import { Button, Icon } from '@/components/ui';
 
 interface CleanupStep1Props {
   flaggedCount: number;
@@ -69,7 +70,9 @@ export default function CleanupStep1({
             transition={{ delay: 0.2 }}
             className="bg-indigo-50 p-4 rounded-xl border border-indigo-100"
           >
-            <div className="text-xl mb-1">👥</div>
+            <div className="text-xl mb-1">
+              <Icon name="Users" size={24} className="text-indigo-600" />
+            </div>
             <div className="text-2xl font-bold text-indigo-700">
               {totalContactsCount}
             </div>
@@ -82,7 +85,9 @@ export default function CleanupStep1({
             transition={{ delay: 0.3 }}
             className="bg-purple-50 p-4 rounded-xl border border-purple-100"
           >
-            <div className="text-xl mb-1">✨</div>
+            <div className="text-xl mb-1">
+              <Icon name="Sparkles" size={24} className="text-purple-600" />
+            </div>
             <div className="text-2xl font-bold text-purple-700">
               {potentialSpamCount}
             </div>
@@ -95,7 +100,9 @@ export default function CleanupStep1({
             transition={{ delay: 0.4 }}
             className="bg-blue-50 p-4 rounded-xl border border-blue-100"
           >
-            <div className="text-xl mb-1">🔍</div>
+            <div className="text-xl mb-1">
+              <Icon name="Search" size={24} className="text-blue-600" />
+            </div>
             <div className="text-2xl font-bold text-blue-700">
               {uniquePatterns}
             </div>
@@ -125,7 +132,13 @@ export default function CleanupStep1({
               >
                 <div className="flex items-center gap-2">
                   <span className="text-lg">
-                    {index === 0 ? '🎯' : index === 1 ? '📊' : '✨'}
+                    {index === 0 ? (
+                      <Icon name="Target" size={20} className="text-red-500" />
+                    ) : index === 1 ? (
+                      <Icon name="BarChart" size={20} className="text-blue-500" />
+                    ) : (
+                      <Icon name="Sparkles" size={20} className="text-purple-500" />
+                    )}
                   </span>
                   <span className="text-sm text-gray-900">{pattern}</span>
                 </div>
@@ -185,7 +198,7 @@ export default function CleanupStep1({
         >
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0 w-12 h-12 bg-white rounded-full flex items-center justify-center">
-              <span className="text-2xl">✨</span>
+              <Icon name="Sparkles" size={28} className="text-purple-600" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Ready to optimize?</h3>
@@ -204,19 +217,21 @@ export default function CleanupStep1({
         transition={{ delay: 1.0 }}
         className="flex justify-between items-center pt-4 px-4 border-t bg-white mt-4"
       >
-        <button
+        <Button
+          variant="tertiary"
           onClick={onSkip}
-          className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
         >
           Do Later
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="primary"
           onClick={onNext}
-          className="px-4 py-2 bg-gradient-to-r from-[#1E1E3F] to-[#4B4BA6] text-white rounded-lg hover:opacity-90 transition-all transform hover:scale-105 flex items-center gap-1 group"
+          icon="Sparkles"
+          iconPosition="right"
+          className="bg-gradient-to-r from-[#1E1E3F] to-[#4B4BA6] hover:opacity-90 transform hover:scale-105 group"
         >
-          <span>Get Started</span>
-          <span className="text-sm group-hover:rotate-12 transition-transform">✨</span>
-        </button>
+          Get Started
+        </Button>
       </motion.div>
     </div>
   );

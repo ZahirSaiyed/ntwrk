@@ -2,6 +2,7 @@ import React from 'react';
 import type { FlaggedContact } from './types.d';
 import ProgressBar from '@/components/ProgressBar';
 import { motion } from 'framer-motion';
+import { Button, Icon, IconName } from '@/components/ui';
 
 type CategoryType = 'ignore' | 'review' | 'keep';
 
@@ -20,6 +21,12 @@ interface CleanupStep3Props {
   totalSteps: number;
 }
 
+interface CategoryDetails {
+  label: string;
+  icon: IconName;
+  color: string;
+}
+
 export default function CleanupStep3({
   actions,
   categorizations,
@@ -35,20 +42,20 @@ export default function CleanupStep3({
     return acc;
   }, {} as Record<CategoryType, number>);
 
-  const categoryInfo = {
+  const categoryInfo: Record<CategoryType, CategoryDetails> = {
     ignore: {
       label: 'To Archive',
-      icon: '🔕',
+      icon: 'BellOff',
       color: 'bg-red-50 text-red-800 border-red-100',
     },
     review: {
       label: 'To Review',
-      icon: '⏳',
+      icon: 'Clock',
       color: 'bg-yellow-50 text-yellow-800 border-yellow-100',
     },
     keep: {
       label: 'To Keep',
-      icon: '⭐️',
+      icon: 'Star',
       color: 'bg-green-50 text-green-800 border-green-100',
     },
   };
@@ -85,7 +92,9 @@ export default function CleanupStep3({
               transition={{ delay: 0.2 + index * 0.1 }}
               className={`p-4 rounded-xl border ${info.color.split(' ')[0]} border-${info.color.split(' ')[2]}`}
             >
-              <div className="text-xl mb-1">{info.icon}</div>
+              <div className="text-xl mb-1">
+                <Icon name={info.icon} size={24} />
+              </div>
               <div className="text-2xl font-bold">
                 {categoryCounts[category as CategoryType] || 0}
               </div>
@@ -103,7 +112,7 @@ export default function CleanupStep3({
         >
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0 w-12 h-12 bg-white rounded-full flex items-center justify-center">
-              <span className="text-2xl">✨</span>
+              <Icon name="Sparkles" size={24} className="text-purple-600" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Network Impact</h3>
@@ -147,7 +156,7 @@ export default function CleanupStep3({
                           {contact.name}
                         </h4>
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${category.color}`}>
-                          {category.icon} {category.label}
+                          <Icon name={category.icon} size={12} className="mr-1" /> {category.label}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500">{contact.email}</p>
@@ -177,27 +186,32 @@ export default function CleanupStep3({
         transition={{ delay: 0.8 }}
         className="flex justify-between items-center pt-4 px-4 border-t bg-white mt-4"
       >
-        <button
+        <Button
+          variant="tertiary"
           onClick={onBack}
-          className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+          icon="ArrowLeft"
+          iconPosition="left"
         >
-          ← Back
-        </button>
+          Back
+        </Button>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="tertiary"
             onClick={onReview}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1"
+            icon="Search"
+            iconPosition="right"
           >
-            <span>Review</span>
-            <span className="text-sm">🔍</span>
-          </button>
-          <button
+            Review
+          </Button>
+          <Button
+            variant="primary"
             onClick={onComplete}
-            className="px-4 py-2 bg-gradient-to-r from-[#1E1E3F] to-[#4B4BA6] text-white rounded-lg hover:opacity-90 transition-all transform hover:scale-105 flex items-center gap-1 group"
+            icon="Sparkles"
+            iconPosition="right"
+            className="bg-gradient-to-r from-[#1E1E3F] to-[#4B4BA6] hover:opacity-90 transform hover:scale-105"
           >
-            <span>Apply Changes</span>
-            <span className="text-sm group-hover:rotate-12 transition-transform">✨</span>
-          </button>
+            Apply Changes
+          </Button>
         </div>
       </motion.div>
     </div>

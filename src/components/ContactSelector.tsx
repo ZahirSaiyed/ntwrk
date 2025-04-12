@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Contact } from '@/types';
+import { Button, FilterChip, Icon } from '@/components/ui';
 // interface Contact {
 //   name: string;
 //   email: string;
@@ -56,20 +57,17 @@ export default function ContactSelector({
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <button 
+            <FilterChip
+              label="Same Domain"
+              selected={filter.includes('@')}
               onClick={() => {
                 const currentDomain = filter.includes('@') ? filter.split('@')[1] : '';
                 setFilter(currentDomain ? '' : '@');
               }}
-              className={`px-4 py-2 text-sm text-gray-700 ${
-                filter.includes('@') 
-                  ? 'bg-[#1E1E3F] text-white' 
-                  : 'bg-gray-100 hover:bg-gray-200'
-              } rounded-lg transition-colors`}
-            >
-              Same Domain
-            </button>
-            <button 
+              icon="Globe"
+            />
+            <Button 
+              variant={selected.size === filteredContacts.length ? 'tertiary' : 'primary'}
               onClick={() => {
                 const newSelected = new Set([
                   ...Array.from(selected),  // Keep existing selections
@@ -79,33 +77,24 @@ export default function ContactSelector({
                   selected.size === filteredContacts.length ? new Set() : newSelected
                 );
               }}
-              className={`px-4 py-2 text-sm font-medium ${
-                selected.size === filteredContacts.length 
-                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
-                  : 'bg-[#1E1E3F] text-white hover:bg-[#2D2D5F]'
-              } rounded-lg transition-colors flex items-center gap-2`}
+              icon={selected.size === filteredContacts.length ? 'RotateCcw' : 'CheckSquare'}
+              iconPosition="right"
+              size="sm"
             >
-              {selected.size === filteredContacts.length ? (
-                <>
-                  <span>Deselect All</span>
-                  <span className="text-xs">↩️</span>
-                </>
-              ) : (
-                <>
-                  <span>Select All</span>
-                  <span className="text-xs">✨</span>
-                </>
-              )}
-            </button>
-            <button 
+              {selected.size === filteredContacts.length ? 'Deselect All' : 'Select All'}
+            </Button>
+            <Button 
+              variant="danger"
+              size="sm"
               onClick={() => {
                 setFilter('');
                 setSelected(new Set());
               }}
-              className="px-4 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors ml-auto"
+              icon="X"
+              iconPosition="left"
             >
               Clear All
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -121,21 +110,15 @@ export default function ContactSelector({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
-            <svg 
-              className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                clipRule="evenodd"
-              />
-            </svg>
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <Icon name="Search" size={18} />
+            </div>
           </div>
 
           <div className="flex gap-2">
-            <button 
+            <FilterChip
+              label="Recent Contacts"
+              icon="Clock"
               onClick={() => {
                 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
                 const recentEmails = contacts
@@ -143,10 +126,7 @@ export default function ContactSelector({
                   .map(c => c.email);
                 setSelected(new Set([...selected, ...recentEmails]));
               }}
-              className="px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Recent Contacts
-            </button>
+            />
           </div>
         </div>
 
@@ -187,7 +167,9 @@ export default function ContactSelector({
                   <p className="text-sm text-gray-500">{contact.email}</p>
                 </div>
               </div>
-              <button
+              <Button
+                variant="tertiary"
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   const domain = contact.email.split('@')[1];
@@ -199,10 +181,12 @@ export default function ContactSelector({
                   similarContacts.forEach(c => newSelected.add(c.email));
                   setSelected(newSelected);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-sm text-[#1E1E3F] hover:text-[#2D2D5F] transition-all"
+                className="opacity-0 group-hover:opacity-100"
+                icon="Users"
+                iconPosition="left"
               >
                 Select Similar
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -210,19 +194,23 @@ export default function ContactSelector({
 
       {/* Footer Actions */}
       <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-gray-100">
-        <button
+        <Button
+          variant="secondary"
           onClick={onBack}
-          className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          icon="ArrowLeft"
+          iconPosition="left"
         >
           Back
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="primary"
           onClick={() => onComplete(selected)}
           disabled={selected.size === 0}
-          className="px-6 py-2 bg-[#1E1E3F] text-white rounded-lg hover:bg-[#2D2D5F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          icon={editingGroup ? 'Save' : 'Plus'}
+          iconPosition="right"
         >
           {editingGroup ? 'Save Changes' : 'Create Group'}
-        </button>
+        </Button>
       </div>
     </div>
   );

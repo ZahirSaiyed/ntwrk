@@ -2,6 +2,7 @@ import { Contact } from '@/types';
 import { calculateNetworkScore } from '@/utils/networkAnalytics';
 import { getNetworkMetricsExplanation } from '@/utils/metricExplanations';
 import Tooltip from '@/components/Tooltip';
+import { Icon, IconName } from '@/components/ui';
 
 interface Props {
   contacts: Contact[];
@@ -79,13 +80,13 @@ export default function NetworkScore({ contacts, className = '', onViewChange }:
           </div>
           <div className="mt-4 flex gap-4">
             <QuickAction
-              icon="👥"
+              icon="Users"
               label="Organize Network"
               description="Discover and manage groups"
               onClick={() => onViewChange('organize')}
             />
             <QuickAction
-              icon="📊"
+              icon="BarChart"
               label="Activity Timeline"
               description="Track communication patterns over time"
               onClick={() => onViewChange('analyze')}
@@ -110,15 +111,17 @@ function MetricCard({ value, trend, label, explanation, suggestion }: MetricCard
     <Tooltip content={
       <div className="space-y-2">
         <p>{explanation}</p>
-        <p className="text-sm text-[#22C55E]">💡 Tip: {suggestion}</p>
+        <p className="text-sm text-[#22C55E]">
+          <Icon name="Lightbulb" size={16} className="inline mr-1" /> Tip: {suggestion}
+        </p>
       </div>
     }>
       <div className="text-center p-4 rounded-xl hover:bg-gray-50 transition-colors cursor-help">
         <div className="text-3xl font-semibold text-[#1E1E3F] flex items-center justify-center gap-2">
           {value}
-          {trend === 'up' && <span className="text-[#22C55E] text-lg">↗</span>}
-          {trend === 'down' && <span className="text-red-500 text-lg">↘</span>}
-          {trend === 'neutral' && <span className="text-[#3B82F6] text-lg">→</span>}
+          {trend === 'up' && <Icon name="TrendingUp" size={20} className="text-[#22C55E]" />}
+          {trend === 'down' && <Icon name="TrendingDown" size={20} className="text-red-500" />}
+          {trend === 'neutral' && <Icon name="ArrowRight" size={20} className="text-[#3B82F6]" />}
         </div>
         <div className="text-sm text-gray-500 mt-1">{label}</div>
       </div>
@@ -127,7 +130,7 @@ function MetricCard({ value, trend, label, explanation, suggestion }: MetricCard
 }
 
 interface QuickActionProps {
-  icon: string;
+  icon: IconName;
   label: string;
   description: string;
   onClick: () => void;
@@ -136,7 +139,9 @@ interface QuickActionProps {
 function QuickAction({ icon, label, description, onClick }: QuickActionProps) {
   return (
     <button className="flex-1 p-4 rounded-xl border border-gray-200 hover:border-[#1E1E3F] hover:bg-[#F4F4FF] transition-all group" onClick={onClick}>
-      <div className="text-2xl mb-2">{icon}</div>
+      <div className="text-2xl mb-2">
+        <Icon name={icon} size={32} className="text-[#1E1E3F]" />
+      </div>
       <div className="text-sm font-medium text-[#1E1E3F]">{label}</div>
       <div className="text-xs text-gray-500 group-hover:text-gray-600">{description}</div>
     </button>
