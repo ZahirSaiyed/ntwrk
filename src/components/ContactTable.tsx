@@ -1,9 +1,10 @@
 import { Contact } from '@/types';
 import { useState, useRef, useEffect } from 'react';
 import { format, isValid, parseISO } from 'date-fns';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useUndo } from '../hooks/useUndo';
+import Pagination from './Pagination';
 
 interface ContactTableProps {
   contacts: Contact[];
@@ -82,12 +83,11 @@ const EditableCell = ({ value, onChange, onBlur, onKeyDown, type = 'text' }: Edi
         className={`
           w-full px-2 py-1 
           bg-white/50 backdrop-blur-sm
-          border-2 border-transparent
+          border border-transparent
           rounded-md shadow-sm
           transition-all duration-200
-          focus:border-[#1E1E3F]/30 focus:bg-white
+          focus:ring-2 focus:ring-[#1E1E3F]/20 focus:border-[#1E1E3F]/30 focus:bg-white
           hover:bg-white
-          ${isFocused ? 'ring-2 ring-[#1E1E3F]/10' : ''}
         `}
       />
     </motion.div>
@@ -99,81 +99,166 @@ interface TableState {
   copiedCells: Map<string, any>;
 }
 
-const ShortcutsGuide = () => (
-  <div 
-    className="mx-4 inline-flex
-      bg-white/90 backdrop-blur-sm 
-      px-4 py-2.5 rounded-lg
-      items-center gap-4
-      text-xs text-gray-600
-      border border-gray-200
-      whitespace-nowrap
-      hover:bg-white
-      transition-colors duration-150"
-  >
-    <div className="flex items-center gap-4 divide-x divide-gray-200">
-      <div className="flex items-center gap-2">
-        <kbd className="px-1.5 py-0.5 rounded bg-gray-100 font-mono">↵</kbd>
-        <span>Edit</span>
-      </div>
-      <div className="flex items-center gap-2 pl-4">
-        <kbd className="px-1.5 py-0.5 rounded bg-gray-100 font-mono">Esc</kbd>
-        <span>Cancel</span>
-      </div>
-      <div className="flex items-center gap-2 pl-4">
-        <div className="flex gap-1">
-          <kbd className="px-1.5 py-0.5 rounded bg-gray-100 font-mono">←</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-gray-100 font-mono">→</kbd>
-        </div>
-        <span>Navigate</span>
-      </div>
-      <div className="flex items-center gap-2 pl-4">
-        <div className="flex gap-1">
-          <kbd className="px-1.5 py-0.5 rounded bg-gray-100 font-mono">⌘[</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-gray-100 font-mono">⌘]</kbd>
-        </div>
-        <span>Pages</span>
-      </div>
-    </div>
-  </div>
-);
+// ProTip component aligned with design system
+function ProTipBadge({ visible, onDismiss }: { visible: boolean; onDismiss: () => void }) {
+  if (!visible) return null;
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F4F4FF] border border-[#1E1E3F]/10 rounded-full text-xs text-[#1E1E3F] shadow-sm"
+    >
+      <span className="font-medium">Pro Tip</span>
+      <span>Use keyboard to navigate</span>
+      <button 
+        onClick={onDismiss}
+        className="ml-1 p-0.5 hover:bg-[#1E1E3F]/10 rounded-full transition-colors duration-200"
+        aria-label="Dismiss pro tip"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </button>
+    </motion.div>
+  );
+}
+
+// ShortcutsGuide component aligned with design system
+function ShortcutsGuide({ visible, isKeyboardActive }: { visible: boolean, isKeyboardActive: boolean }) {
+  if (!visible) return null;
+  
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          transition={{ 
+            type: "spring", 
+            stiffness: 400, 
+            damping: 30 
+          }}
+          className="fixed bottom-4 right-4 max-w-sm bg-[#1E1E3F] shadow-lg rounded-lg overflow-hidden z-50"
+        >
+          <div className="px-4 py-3 bg-[#1E1E3F] text-white flex justify-between items-center border-b border-white/10">
+            <h3 className="text-sm font-medium">Keyboard shortcuts</h3>
+            <button
+              onClick={() => {
+                // Close logic (should be passed as prop)
+                const event = new CustomEvent('toggleShortcutsGuide', { detail: { visible: false } });
+                document.dispatchEvent(event);
+              }}
+              className="text-white/70 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors duration-200"
+              aria-label="Close shortcuts guide"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="px-4 py-3 bg-[#1E1E3F] text-white space-y-3">
+            {/* Primary shortcuts - always visible */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Select row</span>
+                <div className="flex items-center gap-1">
+                  <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">Click</kbd>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span>Edit cell</span>
+                <div className="flex items-center gap-1">
+                  <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">Double-click</kbd>
+                </div>
+              </div>
+            </div>
+            
+            {/* Navigation shortcuts - only visible when keyboard is active */}
+            <AnimatePresence>
+              {isKeyboardActive && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="pt-2 border-t border-white/10 space-y-2"
+                >
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Navigate rows</span>
+                    <div className="flex items-center gap-1">
+                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">↑</kbd>
+                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">↓</kbd>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Navigate pages</span>
+                    <div className="flex items-center gap-1">
+                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">PgUp</kbd>
+                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">PgDn</kbd>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>First/Last page</span>
+                    <div className="flex items-center gap-1">
+                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">Home</kbd>
+                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">End</kbd>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          
+          <div className="px-4 py-2 bg-[#1E1E3F]/90 border-t border-white/10 flex justify-between items-center">
+            <span className="text-xs text-white/70">Press any key to see more shortcuts</span>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 const PageSizeControl = ({ 
   pageSize, 
-  onPageSizeChange 
+  onPageSizeChange,
+  showKeyboardTip = true,
+  onDismissTip
 }: { 
   pageSize: number;
   onPageSizeChange: (size: number) => void;
-}) => (
-  <div className="flex items-center gap-3 text-sm text-gray-600">
-    <span>Show</span>
-    <select
-      value={pageSize}
-      onChange={(e) => onPageSizeChange(Number(e.target.value))}
-      className={`
-        px-3 py-1.5 
-        bg-white/95 backdrop-blur-sm
-        border border-gray-200/80
-        rounded-lg shadow-sm 
-        focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-200
-        hover:border-blue-200/50 hover:bg-white
-        transition-all duration-200
-        appearance-none
-        bg-no-repeat
-        bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2212%22%20height%3D%2212%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M3%205h6L6%209z%22%20fill%3D%22%236B7280%22%2F%3E%3C%2Fsvg%3E')] 
-        bg-[position:right_8px_center]
-        bg-[length:16px_16px]
-        pr-8
-      `}
-    >
-      <option value={5}>5</option>
-      <option value={10}>10</option>
-      <option value={25}>25</option>
-      <option value={50}>50</option>
-    </select>
-    <span>rows per page</span>
-  </div>
-);
+  showKeyboardTip?: boolean;
+  onDismissTip: () => void;
+}) => {
+  return (
+    <div className="flex items-center gap-4">
+      <div className="flex items-center">
+        <span className="text-sm text-gray-500 mr-2">Items per page</span>
+        <select
+          className="block w-16 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#1E1E3F]"
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          aria-label="Items per page"
+        >
+          {[10, 25, 50, 100].map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </div>
+      
+      {showKeyboardTip && (
+        <AnimatePresence>
+          <ProTipBadge visible={showKeyboardTip} onDismiss={onDismissTip} />
+        </AnimatePresence>
+      )}
+    </div>
+  );
+};
 
 export default function ContactTable({
   contacts,
@@ -225,6 +310,41 @@ export default function ContactTable({
   useHotkeys('ctrl+y', () => redo(), { enableOnFormTags: true });
   useHotkeys('shift+space', () => handleSelectRow(), { enableOnFormTags: true });
 
+  const [showKeyboardTip, setShowKeyboardTip] = useState(() => {
+    return !localStorage.getItem('hasSeenTableKeyboardTip');
+  });
+  
+  const [isKeyboardActive, setIsKeyboardActive] = useState(false);
+  const [showShortcutsGuide, setShowShortcutsGuide] = useState(false);
+  
+  // Auto-dismiss the Pro Tip after 5 seconds
+  useEffect(() => {
+    if (showKeyboardTip) {
+      const timer = setTimeout(() => {
+        dismissKeyboardTip();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [showKeyboardTip]);
+  
+  // Toggle shortcuts guide when keyboard navigation is active
+  useEffect(() => {
+    if (isKeyboardActive) {
+      setShowShortcutsGuide(true);
+    } else {
+      // Hide shortcuts guide after a delay when keyboard nav is inactive
+      const timer = setTimeout(() => {
+        setShowShortcutsGuide(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isKeyboardActive]);
+  
+  const dismissKeyboardTip = () => {
+    setShowKeyboardTip(false);
+    localStorage.setItem('hasSeenTableKeyboardTip', 'true');
+  };
+
   const handleDoubleClick = (contact: Contact, field: string) => {
     const value = contact[field as keyof Contact];
     
@@ -253,64 +373,163 @@ export default function ContactTable({
   };
 
   const handleTableKeyDown = (e: React.KeyboardEvent, contact: Contact, field: string) => {
-    if (!editingCell) {
-      const currentRowIndex = contacts.findIndex(c => c.email === contact.email);
-      const currentColIndex = safeColumns.findIndex(col => col.key === field);
-
-      // Add page navigation shortcuts
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
-          case 'PageUp':
-          case '[':
-            e.preventDefault();
-            if (currentPage > 1) {
-              onPageChange(currentPage - 1);
-            }
-            break;
-          case 'PageDown':
-          case ']':
-            e.preventDefault();
-            if (currentPage * itemsPerPage < totalContacts) {
-              onPageChange(currentPage + 1);
-            }
-            break;
+    // Mark keyboard as active when navigation keys are used
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+      setIsKeyboardActive(true);
+    }
+    
+    const columnIndex = safeColumns.findIndex(col => col.key === field);
+    const contactIndex = paginatedContacts.findIndex(c => c.email === contact.email);
+    
+    // Handle keyboard navigation based on key press
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        // Move to previous row in the same column
+        if (contactIndex > 0) {
+          const prevContact = paginatedContacts[contactIndex - 1];
+          setFocusedCell({
+            contactId: prevContact.email,
+            field
+          });
         }
-        return;
-      }
+        // If at first row and not first page, go to previous page
+        else if (currentPage > 1 && contactIndex === 0) {
+          onPageChange(currentPage - 1);
+          // Focus will be set on the last row after page change
+          setTimeout(() => {
+            // We can't access the new page's contacts immediately, so we'll focus on the first item
+            // on the next render cycle
+            setFocusedCell(null);
+            tableRef.current?.focus();
+          }, 100);
+        }
+        break;
 
-      // Existing arrow key navigation...
-      switch (e.key) {
-        case 'ArrowUp':
+      case 'ArrowDown':
+        e.preventDefault();
+        // Move to next row in the same column
+        if (contactIndex < paginatedContacts.length - 1) {
+          const nextContact = paginatedContacts[contactIndex + 1];
+          setFocusedCell({
+            contactId: nextContact.email,
+            field
+          });
+        } 
+        // If at last row and not last page, go to next page
+        else if (currentPage < Math.ceil(totalContacts / itemsPerPage) && contactIndex === paginatedContacts.length - 1) {
+          onPageChange(currentPage + 1);
+          // Focus will be set on the first row after page change
+          setTimeout(() => {
+            // We can't access the new page's contacts immediately, so we'll focus on the first item
+            // on the next render cycle
+            setFocusedCell(null);
+            tableRef.current?.focus();
+          }, 100);
+        }
+        break;
+
+      case 'ArrowLeft':
+        e.preventDefault();
+        // Move to previous column in the same row
+        if (columnIndex > 0) {
+          setFocusedCell({
+            contactId: contact.email,
+            field: safeColumns[columnIndex - 1].key
+          });
+        }
+        break;
+
+      case 'ArrowRight':
+        e.preventDefault();
+        // Move to next column in the same row
+        if (columnIndex < safeColumns.length - 1) {
+          setFocusedCell({
+            contactId: contact.email,
+            field: safeColumns[columnIndex + 1].key
+          });
+        }
+        break;
+
+      case 'Home':
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          if (currentRowIndex > 0) {
-            const prevContact = contacts[currentRowIndex - 1];
-            setFocusedCell({ contactId: prevContact.email, field });
+          // Go to first page, first row, first column
+          if (currentPage !== 1) {
+            onPageChange(1);
+            // Focus will be handled after page change
+          } else if (paginatedContacts.length > 0) {
+            // Already on first page, just focus first item
+            setFocusedCell({
+              contactId: paginatedContacts[0].email,
+              field: safeColumns[0].key
+            });
           }
-          break;
-        case 'ArrowDown':
+        } else {
           e.preventDefault();
-          if (currentRowIndex < contacts.length - 1) {
-            const nextContact = contacts[currentRowIndex + 1];
-            setFocusedCell({ contactId: nextContact.email, field });
+          // Go to first column of current row
+          setFocusedCell({
+            contactId: contact.email,
+            field: safeColumns[0].key
+          });
+        }
+        break;
+        
+      case 'End':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          // Go to last page, last row, last column
+          const lastPage = Math.ceil(totalContacts / itemsPerPage);
+          if (currentPage !== lastPage) {
+            onPageChange(lastPage);
+            // Focus will be handled after page change
+          } else if (paginatedContacts.length > 0) {
+            // Already on last page, just focus last item
+            setFocusedCell({
+              contactId: paginatedContacts[paginatedContacts.length - 1].email,
+              field: safeColumns[safeColumns.length - 1].key
+            });
           }
-          break;
-        case 'ArrowLeft':
+        } else {
           e.preventDefault();
-          if (currentColIndex > 0) {
-            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex - 1].key });
-          }
-          break;
-        case 'ArrowRight':
+          // Go to last column of current row
+          setFocusedCell({
+            contactId: contact.email,
+            field: safeColumns[safeColumns.length - 1].key
+          });
+        }
+        break;
+
+      case 'Enter':
+        e.preventDefault();
+        // Edit the current cell
+        handleDoubleClick(contact, field);
+        break;
+
+      case 'Escape':
+        e.preventDefault();
+        // Clear focus
+        setFocusedCell(null);
+        tableRef.current?.focus();
+        break;
+
+      // Handle copy-paste shortcuts
+      case 'c':
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          if (currentColIndex < safeColumns.length - 1) {
-            setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex + 1].key });
-          }
-          break;
-        case 'Enter':
+          handleCopy();
+        }
+        break;
+
+      case 'v':
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          handleDoubleClick(contact, field);
-          break;
-      }
+          handlePaste();
+        }
+        break;
+
+      // Rest of the key handlers...
+      // ... existing code ...
     }
   };
 
@@ -325,7 +544,7 @@ export default function ContactTable({
       });
       tableRef.current?.focus();
     }
-    const currentRowIndex = contacts.findIndex(c => c.email === contact.email);
+    const currentRowIndex = paginatedContacts.findIndex(c => c.email === contact.email);
     const currentColIndex = safeColumns.findIndex(col => col.key === editingCell?.field);
 
     switch (e.key) {
@@ -335,15 +554,15 @@ export default function ContactTable({
           // Move up
           handleSaveEdit();
           if (currentRowIndex > 0) {
-            const prevContact = contacts[currentRowIndex - 1];
+            const prevContact = paginatedContacts[currentRowIndex - 1];
             setFocusedCell({ contactId: prevContact.email, field: editingCell?.field || '' });
             handleDoubleClick(prevContact, editingCell?.field || '');
           }
         } else {
           // Move down
           handleSaveEdit();
-          if (currentRowIndex < contacts.length - 1) {
-            const nextContact = contacts[currentRowIndex + 1];
+          if (currentRowIndex < paginatedContacts.length - 1) {
+            const nextContact = paginatedContacts[currentRowIndex + 1];
             setFocusedCell({ contactId: nextContact.email, field: editingCell?.field || '' });
             handleDoubleClick(nextContact, editingCell?.field || '');
           }
@@ -359,7 +578,7 @@ export default function ContactTable({
             handleDoubleClick(contact, safeColumns[currentColIndex - 1].key);
           } else if (currentRowIndex > 0) {
             // Move to end of previous row
-            const prevContact = contacts[currentRowIndex - 1];
+            const prevContact = paginatedContacts[currentRowIndex - 1];
             setFocusedCell({ contactId: prevContact.email, field: safeColumns[safeColumns.length - 1].key });
             handleDoubleClick(prevContact, safeColumns[safeColumns.length - 1].key);
           }
@@ -368,9 +587,9 @@ export default function ContactTable({
           if (currentColIndex < safeColumns.length - 1) {
             setFocusedCell({ contactId: contact.email, field: safeColumns[currentColIndex + 1].key });
             handleDoubleClick(contact, safeColumns[currentColIndex + 1].key);
-          } else if (currentRowIndex < contacts.length - 1) {
+          } else if (currentRowIndex < paginatedContacts.length - 1) {
             // Move to start of next row
-            const nextContact = contacts[currentRowIndex + 1];
+            const nextContact = paginatedContacts[currentRowIndex + 1];
             setFocusedCell({ contactId: nextContact.email, field: safeColumns[0].key });
             handleDoubleClick(nextContact, safeColumns[0].key);
           }
@@ -383,7 +602,7 @@ export default function ContactTable({
     if (!editingCell) return;
     
     const updatedContact = {
-      ...contacts.find(c => c.email === editingCell.contactId)!,
+      ...paginatedContacts.find(c => c.email === editingCell.contactId)!,
       [editingCell.field]: editingCell.value
     };
     
@@ -405,9 +624,9 @@ export default function ContactTable({
   const handleRowClick = (e: React.MouseEvent, contact: Contact) => {
     if (e.shiftKey && lastSelectedRow) {
       // Range selection
-      const startIndex = contacts.findIndex(c => c.email === lastSelectedRow);
-      const endIndex = contacts.findIndex(c => c.email === contact.email);
-      const range = contacts.slice(
+      const startIndex = paginatedContacts.findIndex(c => c.email === lastSelectedRow);
+      const endIndex = paginatedContacts.findIndex(c => c.email === contact.email);
+      const range = paginatedContacts.slice(
         Math.min(startIndex, endIndex),
         Math.max(startIndex, endIndex) + 1
       );
@@ -451,7 +670,7 @@ export default function ContactTable({
     const newCopiedCells = new Map();
     state.selectedCells.forEach(cellId => {
       const [contactId, field] = cellId.split(':');
-      const contact = contacts.find(c => c.email === contactId);
+      const contact = paginatedContacts.find(c => c.email === contactId);
       if (contact) {
         newCopiedCells.set(cellId, contact[field as keyof Contact]);
       }
@@ -477,7 +696,7 @@ export default function ContactTable({
       // Batch update all changes
       await Promise.all(updates.map(update => 
         onContactUpdate({
-          ...contacts.find(c => c.email === update.contactId)!,
+          ...paginatedContacts.find(c => c.email === update.contactId)!,
           [update.field]: update.value
         })
       ));
@@ -501,27 +720,38 @@ export default function ContactTable({
     }));
   };
 
+  // Detect mouse interaction to toggle keyboard mode off
+  const handleMouseInteraction = () => {
+    setIsKeyboardActive(false);
+  };
+
   return (
-    <div>
-      <div className="flex justify-between items-center px-6 py-3 border-b bg-gray-50/50">
-        <PageSizeControl 
-          pageSize={itemsPerPage} 
-          onPageSizeChange={onPageSizeChange} 
-        />
-        <div className="text-sm text-gray-600 flex items-center gap-2">
-          <span>
-            {`${startIndex + 1}-${Math.min(startIndex + itemsPerPage, totalContacts)} of ${totalContacts}`}
-          </span>
-        </div>
-      </div>
+    <div className="relative" onClick={handleMouseInteraction}>
       <div 
         ref={tableRef}
-        className="relative overflow-x-auto outline-none focus:ring-2 focus:ring-blue-100 rounded-lg"
+        className="relative overflow-x-auto outline-none focus:ring-2 focus:ring-[#1E1E3F]/20 rounded-lg"
         tabIndex={0}
         onKeyDown={(e) => {
+          // Activate keyboard mode on tab or arrow keys
+          if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            setIsKeyboardActive(true);
+          }
+          
+          // Global table keyboard handlers
+          if (e.key === 'Tab' && !e.shiftKey) {
+            if (!focusedCell && paginatedContacts.length > 0) {
+              e.preventDefault();
+              // Set focus on the first cell if nothing is focused
+              setFocusedCell({
+                contactId: paginatedContacts[0].email,
+                field: safeColumns[0].key
+              });
+            }
+          }
+          
           // Always handle keyboard navigation if we have a focused cell
           if (focusedCell) {
-            const contact = contacts.find(c => c.email === focusedCell.contactId);
+            const contact = paginatedContacts.find(c => c.email === focusedCell.contactId);
             if (contact) {
               if (editingCell) {
                 handleEditKeyDown(e, contact);
@@ -531,6 +761,7 @@ export default function ContactTable({
             }
           }
         }}
+        aria-label="Contacts table"
       >
         <table className={`w-full ${className}`}>
           <thead>
@@ -563,23 +794,25 @@ export default function ContactTable({
                 key={contact.email}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className={`hover:bg-gray-50 transition-colors
-                  ${state.selectedCells.has(`${contact.email}:${safeColumns[0].key}`) ? 'bg-[#F4F4FF]' : ''}
+                whileHover={{ backgroundColor: 'rgba(244, 244, 255, 0.3)' }}
+                className={`
+                  transition-colors duration-150 min-h-[44px]
+                  ${selectedRows.has(contact.email) ? 'bg-[#F4F4FF]/50' : ''}
                 `}
               >
                 {safeColumns.map((column) => (
                   <td
                     key={column.key}
                     className={`
-                      px-6 py-4 text-sm text-gray-600
+                      px-6 py-3 text-sm text-gray-600
                       group relative cursor-text
                       transition-all duration-150
                       ${editingCell?.contactId === contact.email && editingCell?.field === column.key 
                         ? 'z-10' 
                         : ''}
                       ${focusedCell?.contactId === contact.email && focusedCell?.field === column.key 
-                        ? 'outline outline-[1.5px] outline-blue-400/40 bg-blue-50/30' 
-                        : 'hover:bg-gray-50'}
+                        ? 'ring-2 ring-[#1E1E3F]/20 bg-[#F4F4FF]/20' 
+                        : ''}
                     `}
                     onClick={(e) => {
                       e.preventDefault();
@@ -616,9 +849,22 @@ export default function ContactTable({
             ))}
           </tbody>
         </table>
-
-        <ShortcutsGuide />
       </div>
+      
+      {/* Add Pagination component at the bottom */}
+      <Pagination 
+        currentPage={currentPage}
+        totalPages={Math.ceil(totalContacts / itemsPerPage)}
+        onPageChange={onPageChange}
+        itemsPerPage={itemsPerPage}
+        totalItems={totalContacts}
+        onPageSizeChange={onPageSizeChange}
+        showKeyboardHint={showKeyboardTip}
+        className="border-t border-gray-100"
+      />
+      
+      {/* Keyboard shortcuts guide - only visible when keyboard navigation is active */}
+      <ShortcutsGuide visible={showShortcutsGuide} isKeyboardActive={isKeyboardActive} />
     </div>
   );
 }

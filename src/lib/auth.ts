@@ -10,11 +10,34 @@ interface CustomToken extends JWT {
   accessToken?: string;
 }
 
+// Check and log essential environment variables
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const nextAuthSecret = process.env.NEXTAUTH_SECRET;
+
+console.log("Environment variables check:");
+console.log(`GOOGLE_CLIENT_ID exists: ${!!googleClientId}`);
+console.log(`GOOGLE_CLIENT_SECRET exists: ${!!googleClientSecret}`);
+console.log(`NEXTAUTH_SECRET exists: ${!!nextAuthSecret}`);
+
+// Ensure the credentials exist
+if (!googleClientId || !googleClientSecret) {
+  console.error("Missing Google OAuth credentials. Please check your .env.local file.");
+}
+
 export const authOptions = {
+  secret: nextAuthSecret,
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  jwt: {
+    secret: process.env.NEXTAUTH_SECRET,
+  },
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: googleClientId || "",
+      clientSecret: googleClientSecret || "",
       authorization: {
         params: {
           scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email",
@@ -43,5 +66,7 @@ export const authOptions = {
   },
   pages: {
     signIn: '/auth',
+    error: '/auth/error', // Add an error page to better capture issues
   },
+  debug: true, // Enable debug for all environments temporarily to troubleshoot
 };

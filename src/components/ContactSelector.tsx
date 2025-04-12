@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Contact } from '@/types';
 import { Button, FilterChip, Icon } from '@/components/ui';
 // interface Contact {
@@ -27,12 +27,44 @@ export default function ContactSelector({
   const [selected, setSelected] = useState(initialSelection);
   const [filter, setFilter] = useState('');
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [showKeyboardTip, setShowKeyboardTip] = useState(false);
+  const contactListRef = useRef<HTMLDivElement>(null);
   
   // Initialize selection when initialSelection changes
   useEffect(() => {
     setSelected(initialSelection);
   }, [initialSelection]);
 
+  // Check localStorage for keyboard tip on first render
+  useEffect(() => {
+    const hasSeenKeystrokeTip = localStorage.getItem('hasSeenKeystrokeTip');
+    if (!hasSeenKeystrokeTip) {
+      // Show the tip after a short delay
+      const timer = setTimeout(() => {
+        setShowKeyboardTip(true);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Auto-dismiss tooltip after 5 seconds
+  useEffect(() => {
+    if (showKeyboardTip) {
+      const timer = setTimeout(() => {
+        dismissTip();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [showKeyboardTip]);
+
+  // Handle tip dismissal
+  const dismissTip = () => {
+    setShowKeyboardTip(false);
+    localStorage.setItem('hasSeenKeystrokeTip', 'true');
+  };
+  
   // Smart filtering system
   const filteredContacts = useMemo(() => {
     // First filter out spam contacts
@@ -63,6 +95,81 @@ export default function ContactSelector({
       return true;
     });
   }, [contacts, filter, activeFilters]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (filteredContacts.length === 0) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setFocusedIndex(prev => {
+          const nextIndex = prev < filteredContacts.length - 1 ? prev + 1 : prev;
+          scrollIntoViewIfNeeded(nextIndex);
+          return nextIndex;
+        });
+        break;
+        
+      case 'ArrowUp':
+        e.preventDefault();
+        setFocusedIndex(prev => {
+          const nextIndex = prev > 0 ? prev - 1 : 0;
+          scrollIntoViewIfNeeded(nextIndex);
+          return nextIndex;
+        });
+        break;
+        
+      case 'Enter':
+        e.preventDefault();
+        if (focusedIndex >= 0 && focusedIndex < filteredContacts.length) {
+          const contact = filteredContacts[focusedIndex];
+          toggleContactSelection(contact.email);
+        }
+        break;
+
+      case 'Home':
+        e.preventDefault();
+        setFocusedIndex(0);
+        scrollIntoViewIfNeeded(0);
+        break;
+        
+      case 'End':
+        e.preventDefault();
+        setFocusedIndex(filteredContacts.length - 1);
+        scrollIntoViewIfNeeded(filteredContacts.length - 1);
+        break;
+    }
+  };
+  
+  // Helper to scroll focused item into view
+  const scrollIntoViewIfNeeded = (index: number) => {
+    if (!contactListRef.current) return;
+    
+    const container = contactListRef.current;
+    const items = container.querySelectorAll('[data-contact-item]');
+    if (items.length <= index) return;
+    
+    const item = items[index] as HTMLElement;
+    const containerRect = container.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    
+    if (itemRect.top < containerRect.top) {
+      item.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } else if (itemRect.bottom > containerRect.bottom) {
+      item.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+  };
+  
+  // Toggle contact selection
+  const toggleContactSelection = (email: string) => {
+    const newSelected = new Set(selected);
+    if (selected.has(email)) {
+      newSelected.delete(email);
+    } else {
+      newSelected.add(email);
+    }
+    setSelected(newSelected);
+  };
 
   // Handle filter toggle
   const toggleFilter = (filterName: string) => {
@@ -195,22 +302,43 @@ export default function ContactSelector({
           </div>
         </div>
 
+        {/* Keyboard Tip - Updated to be more compact and badge-like */}
+        {showKeyboardTip && (
+          <div className="relative mt-3 inline-flex items-center px-3 py-1.5 bg-[#F4F4FF] rounded-full text-xs text-gray-700 animated fadeIn">
+            <div className="flex-shrink-0 text-[#1E1E3F] mr-2">
+              <Icon name="KeySquare" size={16} />
+            </div>
+            <span className="font-medium mr-1">✨ Pro Tip:</span>
+            <span>Use Tab and arrow keys to navigate, Enter to select</span>
+            <button 
+              onClick={dismissTip}
+              className="ml-2 text-gray-400 hover:text-gray-600 flex-shrink-0"
+              aria-label="Dismiss tip"
+            >
+              <Icon name="X" size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Contact List */}
-        <div className="overflow-y-auto border border-gray-100 rounded-lg mt-4" style={{ maxHeight: 'calc(70vh - 280px)' }}>
+        <div 
+          ref={contactListRef}
+          className="overflow-y-auto border border-gray-100 rounded-lg mt-4" 
+          style={{ maxHeight: 'calc(70vh - 280px)' }}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+        >
           {filteredContacts.length > 0 ? (
-            filteredContacts.map(contact => (
+            filteredContacts.map((contact, index) => (
               <div 
                 key={contact.email}
-                onClick={() => {
-                  const newSelected = new Set(selected);
-                  if (selected.has(contact.email)) {
-                    newSelected.delete(contact.email);
-                  } else {
-                    newSelected.add(contact.email);
-                  }
-                  setSelected(newSelected);
-                }}
-                className="flex items-center justify-between p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 group cursor-pointer"
+                data-contact-item
+                onClick={() => toggleContactSelection(contact.email)}
+                onFocus={() => setFocusedIndex(index)}
+                className={`flex items-center justify-between p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 group cursor-pointer min-h-[44px] transition-colors duration-150
+                  ${focusedIndex === index ? 'bg-[#F4F4FF]/30 ring-2 ring-[#1E1E3F]/20' : ''}
+                `}
+                tabIndex={0}
               >
                 <div className="flex items-center">
                   <div className="flex items-center justify-center min-w-[44px] min-h-[44px] -ml-1">
@@ -219,13 +347,7 @@ export default function ContactSelector({
                       checked={selected.has(contact.email)}
                       onChange={(e) => {
                         e.stopPropagation();
-                        const newSelected = new Set(selected);
-                        if (e.target.checked) {
-                          newSelected.add(contact.email);
-                        } else {
-                          newSelected.delete(contact.email);
-                        }
-                        setSelected(newSelected);
+                        toggleContactSelection(contact.email);
                       }}
                       className="h-5 w-5 rounded border-gray-300 text-[#1E1E3F] focus:ring-[#1E1E3F] mr-4 transition-opacity duration-150 ease-in-out"
                     />
@@ -327,6 +449,20 @@ export default function ContactSelector({
           0% { transform: scale(0.95); }
           50% { transform: scale(1.1); }
           100% { transform: scale(1); }
+        }
+
+        .animated {
+          animation-duration: 0.5s;
+          animation-fill-mode: both;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fadeIn {
+          animation-name: fadeIn;
         }
       `}</style>
     </div>

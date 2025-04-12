@@ -294,7 +294,7 @@ export default function ContactsPage() {
       console.log("Not showing cleanup assistant");
       setShowCleanupAssistant(false);
     }
-  }, [session?.user?.email, contacts, isLoading]); // Include contacts and loading state as dependencies
+  }, [session?.user?.email, isLoading]);
 
   // Function to invalidate cache and refresh data
   const refreshContacts = useCallback(() => {
@@ -386,9 +386,14 @@ export default function ContactsPage() {
     })) || [])
   ], [contacts]);
 
+  // Replace this useEffect with direct assignment
   useEffect(() => {
-    setAvailableColumnsList(availableColumns);
-  }, [availableColumns]);
+    // Only update if availableColumnsList isn't already set or if columns have changed
+    const columnsChanged = JSON.stringify(availableColumnsList) !== JSON.stringify(availableColumns);
+    if (availableColumnsList.length === 0 || columnsChanged) {
+      setAvailableColumnsList(availableColumns);
+    }
+  }, [availableColumns, availableColumnsList]);
 
   useEffect(() => {
     // Load groups from localStorage on mount
@@ -526,9 +531,13 @@ export default function ContactsPage() {
   // Use effect with memoized values
   useEffect(() => {
     if (customFieldsData.length > 0) {
-      updateColumns(customFieldsData);
+      // Check if we actually need to update to avoid unnecessary state changes
+      const newFields = customFieldsData.filter(key => !activeColumns.includes(key));
+      if (newFields.length > 0) {
+        updateColumns(customFieldsData);
+      }
     }
-  }, [customFieldsData, updateColumns]);
+  }, [customFieldsData, updateColumns, activeColumns]);
 
   const updateContactMutation = useMutation({
     mutationFn: async (updatedContact: Contact) => {
@@ -939,7 +948,13 @@ export default function ContactsPage() {
 
         {/* Enhanced Table Section */}
         <div className="bg-white rounded-3xl shadow-sm">
-          <div className="p-4 flex justify-end border-b border-gray-100">
+          <div className="p-4 flex justify-between border-b border-gray-100">
+            <div className="flex items-center">
+              <span className="text-sm font-medium text-gray-700">Your Network</span>
+              <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
+                {filteredContacts.length} contacts
+              </span>
+            </div>
             <ColumnCustomizer
               availableColumns={availableColumnsList}
               activeColumns={activeColumns}
@@ -967,12 +982,6 @@ export default function ContactsPage() {
             totalContacts={filteredContacts.length}
             onPageChange={(page) => setCurrentPage(page)}
             onPageSizeChange={(size) => setItemsPerPage(size)}
-          />
-          <Pagination
-            currentPage={currentPage}
-            totalPages={Math.ceil(filteredContacts.length / itemsPerPage)}
-            onPageChange={(page) => setCurrentPage(page)}
-            className="p-4 border-t border-gray-100"
           />
         </div>
       </div>

@@ -186,6 +186,42 @@ export default function InboxCleanupAssistant({
   const [categorizedContacts, setCategorizedContacts] = useState<ContactCategory[]>([]);
   const [spamEmails, setSpamEmails] = useState<Set<string>>(new Set());
 
+  // Memoize key functions to prevent dependency chain issues
+  const handleSetExcludeFromAnalytics = useCallback((value: boolean) => {
+    setExcludeFromAnalytics(value);
+    onExcludeFromAnalytics(value);
+  }, [onExcludeFromAnalytics]);
+
+  const handleMarkAsSpam = useCallback((emails: string[]) => {
+    if (emails.length === 0) return;
+    
+    setSpamEmails(prev => {
+      const newSet = new Set(prev);
+      emails.forEach(email => newSet.add(email));
+      return newSet;
+    });
+    
+    onMarkAsSpam(emails);
+    
+    if (emails.length === 1) {
+      setLastMarked(emails[0]);
+      setShowUndo(true);
+      // Auto-hide undo message after 5 seconds
+      setTimeout(() => setShowUndo(false), 5000);
+    }
+  }, [onMarkAsSpam]);
+
+  const handleUndo = useCallback((email: string) => {
+    setSpamEmails(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(email);
+      return newSet;
+    });
+    
+    onUndo(email);
+    setShowUndo(false);
+  }, [onUndo]);
+
   // Memoize the filtered contacts to prevent infinite loops
   const contactsToProcess = useMemo(() => 
     contacts.filter(contact => 
@@ -195,30 +231,53 @@ export default function InboxCleanupAssistant({
     [contacts, spamEmails]
   );
 
-  useEffect(() => {
-    const analyzed = contacts
+  // Memoize the flagged contacts calculation to prevent infinite loops
+  const analyzedContacts = useMemo(() => {
+    return contacts
       .filter(contact => !spamContacts.has(contact.email))
       .map(contact => ({
         contact,
         analysis: analyzeContact(contact)
       }))
       .filter(result => result.analysis.isSpam);
-    
-    setFlaggedContacts(analyzed);
-    
-    // Reset categorizations when contacts change
-    setCategorizedContacts([]);
   }, [contacts, spamContacts]);
 
-  const handleCategorization = (categories: { [email: string]: CategoryType }) => {
+  useEffect(() => {
+    setFlaggedContacts(analyzedContacts);
+    
+    // Only reset categorizations when the flagged contacts actually change
+    if (analyzedContacts.length > 0) {
+      // Use a deep comparison to detect real changes
+      const existingEmails = new Set(flaggedContacts.map(fc => fc.contact.email));
+      const newEmails = new Set(analyzedContacts.map(fc => fc.contact.email));
+      
+      // Check if the sets are different
+      let isDifferent = existingEmails.size !== newEmails.size;
+      if (!isDifferent) {
+        // Check if all elements in existingEmails are in newEmails
+        for (const email of existingEmails) {
+          if (!newEmails.has(email)) {
+            isDifferent = true;
+            break;
+          }
+        }
+      }
+      
+      if (isDifferent) {
+        setCategorizedContacts([]);
+      }
+    }
+  }, [analyzedContacts]);
+
+  const handleCategorization = useCallback((categories: { [email: string]: CategoryType }) => {
     const newCategories = Object.entries(categories).map(([email, category]) => ({
       email,
       category,
     }));
     setCategorizedContacts(newCategories);
-  };
+  }, []);
 
-  const handleComplete = () => {
+  const handleComplete = useCallback(() => {
     // Apply the categorizations
     const toArchive = categorizedContacts
       .filter(c => c.category === 'ignore')
@@ -234,18 +293,9 @@ export default function InboxCleanupAssistant({
       onMarkAsSpam(toArchive);
     }
     onClose();
-  };
+  }, [categorizedContacts, onMarkAsSpam, onClose]);
 
-  const handleMarkAsSpam = useCallback((emails: string[]) => {
-    setSpamEmails(prev => {
-      const newSet = new Set(prev);
-      emails.forEach(email => newSet.add(email));
-      return newSet;
-    });
-    onMarkAsSpam(emails);
-  }, [onMarkAsSpam]);
-
-  const renderStep = () => {
+  const renderStep = useCallback(() => {
     switch (currentStep) {
       case 1:
         return <CleanupStep1 
@@ -296,7 +346,15 @@ export default function InboxCleanupAssistant({
           </div>
         );
     }
-  };
+  }, [
+    currentStep, 
+    flaggedContacts, 
+    contacts.length, 
+    onClose, 
+    handleCategorization, 
+    categorizedContacts, 
+    handleComplete
+  ]);
 
   return (
     <AnimatePresence mode="wait">
