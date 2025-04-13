@@ -1,6 +1,7 @@
 import GoogleProvider from "next-auth/providers/google";
 import { JWT } from "next-auth/jwt";
 import { DefaultSession } from "next-auth";
+import { SessionStrategy } from "next-auth";
 
 interface CustomSession extends DefaultSession {
   accessToken?: string;
@@ -28,7 +29,7 @@ if (!googleClientId || !googleClientSecret) {
 export const authOptions = {
   secret: nextAuthSecret,
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as SessionStrategy,
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   jwt: {
