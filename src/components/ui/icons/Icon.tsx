@@ -1,14 +1,20 @@
 import React from 'react';
-import * as LucideIcons from 'lucide-react';
 import { LucideProps } from 'lucide-react';
+import { Star, User, Settings, Bell, Search, Menu, X, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, Minus, Check, AlertCircle, Info, Trash2, Edit2, Copy, Share2, Download, Upload, Eye, EyeOff, Lock, Unlock, Heart, MessageSquare, Send, Home, Calendar, Clock, Tag, Filter, Grid, List, MoreVertical, MoreHorizontal, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Maximize2, Minimize2, RefreshCw, RotateCw, RotateCcw, ZoomIn, ZoomOut, ExternalLink, Link, Unlink, Code, Image, Video, Music, File, Folder, Database, Server, Cloud, Wifi, Battery, Power, Volume2, VolumeX, Mic, MicOff, Camera, VideoOff, Phone, PhoneOff, Mail, Inbox, Paperclip, Bookmark, BookOpen, Book, FileText, FileCode, FileImage, FileVideo, FileAudio, FileCog, Play, Zap, Laptop, Users, LineChart } from 'lucide-react';
 
-export type IconName = keyof typeof LucideIcons;
+type LucideIcon = React.ComponentType<LucideProps>;
+
+const iconMap: Record<string, LucideIcon> = {
+  Star, User, Settings, Bell, Search, Menu, X, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, Minus, Check, AlertCircle, Info, Trash2, Edit2, Copy, Share2, Download, Upload, Eye, EyeOff, Lock, Unlock, Heart, MessageSquare, Send, Home, Calendar, Clock, Tag, Filter, Grid, List, MoreVertical, MoreHorizontal, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Maximize2, Minimize2, RefreshCw, RotateCw, RotateCcw, ZoomIn, ZoomOut, ExternalLink, Link, Unlink, Code, Image, Video, Music, File, Folder, Database, Server, Cloud, Wifi, Battery, Power, Volume2, VolumeX, Mic, MicOff, Camera, VideoOff, Phone, PhoneOff, Mail, Inbox, Paperclip, Bookmark, BookOpen, Book, FileText, FileCode, FileImage, FileVideo, FileAudio, FileCog, Play, Zap, Laptop, Users, LineChart
+};
+
+export type IconName = keyof typeof iconMap;
 
 export interface IconProps extends Omit<LucideProps, 'ref'> {
   name: IconName;
   size?: number | string;
   className?: string;
-  label?: string; // For accessibility
+  label?: string;
   color?: string;
 }
 
@@ -28,13 +34,13 @@ export const Icon: React.FC<IconProps> = ({
   label,
   ...rest
 }) => {
-  // Handle case where icon name doesn't exist
-  if (!LucideIcons[name]) {
-    console.warn(`Icon "${name}" does not exist in Lucide icons`);
+  const LucideIcon = iconMap[name];
+  
+  if (!LucideIcon) {
+    console.warn(`Icon "${name}" does not exist in the icon map`);
     return null;
   }
 
-  const LucideIcon = LucideIcons[name] as React.ComponentType<LucideProps>;
   const ariaLabel = label || `${name} icon`;
 
   return (

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { google, gmail_v1 } from 'googleapis';
+import { google } from 'googleapis';
 import { authOptions } from '@/lib/auth';
 
 interface MessageHeader {
@@ -8,9 +8,7 @@ interface MessageHeader {
   value: string;
 }
 
-export async function GET(
-  request: Request
-): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.email || !session.accessToken) {

@@ -5,29 +5,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
-import GroupFAB from "@/components/GroupFAB";
 import GroupModal from "@/components/GroupModal";
 import { Contact } from '@/types';
-import SmartInsights from "@/components/SmartInsights";
-import StatCard from "@/components/StatCard";
-import SearchInput from "@/components/SearchInput";
-import Link from "next/link";
 import ContactTable from "@/components/ContactTable";
 import ContactDetail from "@/components/ContactDetail";
-import Pagination from "@/components/Pagination";
-import { calculateVelocityScore } from '@/utils/velocityTracking';
 import ColumnCustomizer from "@/components/ColumnCustomizer";
-import ExportButton from '@/components/ExportButton';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import OnboardingPrompt from '@/components/OnboardingPrompt';
 import InboxCleanupAssistant from '@/components/insights/InboxCleanupAssistant';
 import GroupExportModal from '@/components/GroupExportModal';
-import NetworkScore from '@/components/insights/NetworkScore';
 import ImportModal from '@/components/ImportModal';
 import { toast } from 'react-hot-toast';
-import { Icon } from '@/components/ui';
 import FilterChip from '@/components/ui/filters/FilterChip';
 import { IconName } from '@/components/ui/icons/Icon';
+import { Icon } from '@/components/ui';
 import React from 'react';
 import DomainStats from '@/components/DomainStats';
 
@@ -36,11 +27,10 @@ const getContactsSessionKey = (userEmail: string | null | undefined) => {
   return `contacts_${userEmail || 'unknown'}`;
 };
 
-// interface Contact {
-//   name: string;
-//   email: string;
-//   lastContacted: string;
-// }
+// Helper function to get user-specific group storage key
+const getGroupsStorageKey = (userEmail: string | null | undefined) => {
+  return `contact-groups_${userEmail || 'unknown'}`;
+};
 
 type FilterType = 'all' | `group-${string}`;
 
@@ -70,14 +60,7 @@ interface ContactWithSpam extends Contact {
   isSpam?: boolean;
 }
 
-// Add this function before the importContactsMutation declaration
-const importContactsFunction = async () => {
-  const response = await fetch('/api/contacts/import', {
-    method: 'POST'
-  });
-  if (!response.ok) throw new Error('Failed to import contacts');
-  return response.json();
-};
+
 
 // Define types for filter items
 type BaseFilterItem = {
@@ -98,16 +81,172 @@ type GroupFilterItem = BaseFilterItem & {
 
 type FilterItem = QuickFilterItem | GroupFilterItem;
 
+/**
+ * Custom hook to handle groups persistence and filter state
+ */
+function useGroupsPersistence(userEmail: string | null | undefined) {
+  const [groups, setGroupsState] = useState<Array<{id: string, name: string, members: string[]}>>([]);
+  const [activeFilter, setActiveFilterState] = useState<FilterType>('all');
+  const [loadedGroups, setLoadedGroups] = useState(false);
+  
+  // Load groups and filter state from localStorage
+  const loadData = useCallback(() => {
+    if (!userEmail) return;
+    
+    try {
+      // Load groups first
+      const groupsKey = getGroupsStorageKey(userEmail);
+      const savedGroups = localStorage.getItem(groupsKey);
+      
+      let loadedGroupsData: Array<{id: string, name: string, members: string[]}> = [];
+      
+      if (savedGroups) {
+        console.log('Loading groups from localStorage:', groupsKey);
+        loadedGroupsData = JSON.parse(savedGroups);
+        setGroupsState(loadedGroupsData);
+      } else {
+        // Migration from older format
+        const oldGroups = localStorage.getItem('contact-groups');
+        if (oldGroups) {
+          const parsedOldGroups = JSON.parse(oldGroups);
+          if (Array.isArray(parsedOldGroups) && parsedOldGroups.length > 0) {
+            console.log('Migrating groups to user-specific storage format');
+            localStorage.setItem(groupsKey, oldGroups);
+            loadedGroupsData = parsedOldGroups;
+            setGroupsState(parsedOldGroups);
+          }
+        }
+      }
+      
+      setLoadedGroups(true);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  }, [userEmail]);
+  
+  // Save groups to localStorage
+  const saveGroups = useCallback((updatedGroups: Array<{id: string, name: string, members: string[]}>) => {
+    if (!userEmail) return;
+    
+    try {
+      const groupsKey = getGroupsStorageKey(userEmail);
+      localStorage.setItem(groupsKey, JSON.stringify(updatedGroups));
+      setGroupsState(updatedGroups);
+      setLoadedGroups(true);
+    } catch (error) {
+      console.error('Error saving groups:', error);
+    }
+  }, [userEmail]);
+  
+  // Save filter state to localStorage
+  const saveFilter = useCallback((filter: FilterType) => {
+    if (!userEmail) return;
+    
+    try {
+      console.log('Saving filter state:', filter);
+      const filterKey = `contact-filter_${userEmail}`;
+      localStorage.setItem(filterKey, filter);
+      setActiveFilterState(filter);
+    } catch (error) {
+      console.error('Error saving filter state:', error);
+    }
+  }, [userEmail]);
+  
+  // Initial load on mount or when user email changes
+  useEffect(() => {
+    loadData();
+  }, [loadData, userEmail]);
+  
+  return { 
+    groups, 
+    setGroups: saveGroups, 
+    filter: activeFilter,
+    setFilter: saveFilter,
+    reloadData: loadData,
+    loadedGroups
+  };
+}
+
 export default function ContactsPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const queryClient = useQueryClient();
+  const userEmail = session?.user?.email;
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
 
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [groups, setGroups] = useState<Array<{id: string, name: string, members: string[]}>>([]);
+  // Get group ID from URL if present
+  const groupIdFromUrl = searchParams.get('group');
   
+  const [search, setSearch] = useState('');
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  
+  // Use the custom hook for groups and filter persistence
+  const { groups, setGroups, filter, setFilter, reloadData, loadedGroups } = useGroupsPersistence(userEmail);
+  
+  // Update filter when URL changes (separate from the next useEffect to avoid race conditions)
+  useEffect(() => {
+    if (groupIdFromUrl && loadedGroups) {
+      // Check if the group exists in the loaded groups
+      const groupExists = groups.some(g => g.id === groupIdFromUrl);
+      if (groupExists) {
+        console.log('Setting filter from URL param:', `group-${groupIdFromUrl}`);
+        setFilter(`group-${groupIdFromUrl}` as FilterType);
+      }
+    }
+  }, [groupIdFromUrl, groups, loadedGroups, setFilter]);
+  
+  // Sync filter state to URL when filter changes (keep this separate)
+  useEffect(() => {
+    if (filter && filter !== 'all' && filter.startsWith('group-')) {
+      const groupId = filter.replace('group-', '');
+      // Only update URL if it's different to avoid unnecessary history entries
+      if (groupIdFromUrl !== groupId) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('group', groupId);
+        console.log('Updating URL with group param:', groupId);
+        router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+      }
+    } else if (groupIdFromUrl) {
+      // Remove group param if filter is not a group
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('group');
+      console.log('Removing group param from URL');
+      router.replace(pathname, { scroll: false });
+    }
+  }, [filter, pathname, router, searchParams, groupIdFromUrl]);
+  
+  // Add a separate effect to ensure groups persist across page loads
+  useEffect(() => {
+    // This will run on every render to ensure we always have the most up-to-date groups
+    if (userEmail && groups.length > 0) {
+      const groupsKey = getGroupsStorageKey(userEmail);
+      localStorage.setItem(groupsKey, JSON.stringify(groups));
+      console.log('Persisting groups to localStorage:', groups.length, 'groups');
+    }
+  }, [groups, userEmail]);
+  
+  // Force reload data when the component becomes visible
+  useEffect(() => {
+    // This will run when the component mounts or becomes visible
+    reloadData();
+    
+    // Set up visibility change event listener
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Page became visible, reloading data');
+        reloadData();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [reloadData]);
+  
+  // Current group based on filter (keep this separate from storage logic)
   const currentGroup = useMemo(() => {
     if (filter.startsWith('group-')) {
       const groupId = filter.replace('group-', '');
@@ -124,7 +263,6 @@ export default function ContactsPage() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [lastDeletedGroup, setLastDeletedGroup] = useState<{id: string, name: string, members: string[]} | null>(null);
   const [editingGroup, setEditingGroup] = useState<{id: string, name: string, members: string[]} | null>(null);
   const [activeColumns, setActiveColumns] = useState<ColumnKey[]>([
     'name',
@@ -132,7 +270,6 @@ export default function ContactsPage() {
     'company',
     'lastContacted'
   ]);
-  const [customColumns, setCustomColumns] = useState<Column[]>([]);
   const [availableColumnsList, setAvailableColumnsList] = useState<Column[]>([]);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -155,49 +292,17 @@ export default function ContactsPage() {
           sessionStorage.removeItem(key);
         }
       });
+      
+      // Reset the groups state to empty since there's no logged-in user
+      setGroups([]);
     }
-  }, [session?.user?.email]);
+  }, [session?.user?.email, setGroups]);
 
-  const importContactsMutation = useMutation({
-    mutationFn: importContactsFunction,
-    onSuccess: (data) => {
-      // Always show cleanup assistant after importing contacts
-      if (data && data.length > 0) {
-        // Clear the "just closed" flag if it exists
-        sessionStorage.removeItem('cleanup_just_closed');
-        
-        // If there are new contacts, ensure the cleanup assistant shows
-        setShowCleanupAssistant(true);
-        
-        // Also ensure it shows after page refresh by setting the appropriate flags
-        if (session?.user?.email) {
-          // Remove shown-in-session marker
-          sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
-          // Force show cleanup
-          sessionStorage.setItem('force_show_cleanup', 'true');
-          // Mark data as not from cache
-          sessionStorage.setItem('contacts_loaded_from_cache', 'false');
-        }
-        
-        setShowOnboarding(false); // We prefer showing the cleanup assistant directly
-        
-        toast.success(`Imported ${data.length} contacts`, {
-          duration: 3000,
-          style: { background: '#F4F4FF', color: '#1E1E3F' }
-        });
-      } else {
-        // No new contacts were imported
-        toast.success('No new contacts to import', {
-          duration: 3000,
-          style: { background: '#F4F4FF', color: '#1E1E3F' }
-        });
-      }
-    }
-  });
 
-  const { data: contacts = [], isLoading, error } = useQuery({
-    queryKey: ['contacts', session?.user?.email],
-    queryFn: async () => {
+
+  const { data: contacts = [], isLoading, error } = useQuery<Contact[]>(
+    ['contacts', session?.user?.email],
+    async () => {
       // Check if we have cached data in sessionStorage
       const sessionKey = getContactsSessionKey(session?.user?.email);
       const cachedData = sessionStorage.getItem(sessionKey);
@@ -248,10 +353,12 @@ export default function ContactsPage() {
       
       return data;
     },
-    enabled: !!session?.user?.email,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-  });
+    {
+      enabled: !!session?.user?.email,
+      staleTime: 5 * 60 * 1000,
+      cacheTime: 30 * 60 * 1000,
+    }
+  );
 
   // Check if cleanup assistant has been shown before - this needs to run AFTER contacts are loaded
   useEffect(() => {
@@ -318,18 +425,7 @@ export default function ContactsPage() {
     queryClient.invalidateQueries({ queryKey: ['contacts', session?.user?.email] });
   }, [queryClient, session?.user?.email]);
 
-  // For development/testing purposes - reset cleanup assistant
-  const resetCleanupAssistant = useCallback(() => {
-    if (session?.user?.email) {
-      // Clear session-based flag
-      sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
-      setShowCleanupAssistant(true);
-      toast.success('Cleanup assistant reset', { 
-        duration: 2000,
-        style: { background: '#F4F4FF', color: '#1E1E3F' }
-      });
-    }
-  }, [session?.user?.email]);
+
 
   // For development/testing - simulate a new session without clearing permanent preferences
   const resetSessionOnly = useCallback(() => {
@@ -402,27 +498,22 @@ export default function ContactsPage() {
     }
   }, [availableColumns, availableColumnsList]);
 
-  useEffect(() => {
-    // Load groups from localStorage on mount
-    const savedGroups = localStorage.getItem('contact-groups');
-    if (savedGroups) {
-      setGroups(JSON.parse(savedGroups));
-    }
-  }, []);
-
   // Save groups to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem('contact-groups', JSON.stringify(groups));
-  }, [groups]);
+    if (session?.user?.email) {
+      const groupsKey = getGroupsStorageKey(session.user.email);
+      localStorage.setItem(groupsKey, JSON.stringify(groups));
+    }
+  }, [groups, session?.user?.email]);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   // Add utility functions for smart domain filtering
-  const extractDomain = (email: string): string => {
+  const extractDomain = useCallback((email: string): string => {
     const parts = email.split('@');
     return parts.length > 1 ? parts[1].toLowerCase() : '';
-  };
+  }, []);
 
   const isDomainSearch = (term: string): boolean => {
     // Checks if a search term appears to be a domain or partial domain
@@ -472,7 +563,7 @@ export default function ContactsPage() {
   };
 
   // Add function to group contacts by domain
-  const groupContactsByDomain = (contacts: Contact[]) => {
+  const groupContactsByDomain = useCallback((contacts: Contact[]) => {
     // Create a map to group contacts by domain
     const domainGroups = new Map<string, Contact[]>();
     
@@ -487,10 +578,10 @@ export default function ContactsPage() {
     // Convert map to array of [domain, contacts] pairs and sort by domain
     return Array.from(domainGroups.entries())
       .sort((a, b) => a[0].localeCompare(b[0]));
-  };
+  }, [extractDomain]);
 
   // Modified getFilteredContacts to handle domain grouping
-  const getFilteredContacts = (contacts: Contact[], searchTerm: string, activeFilter: FilterType) => {
+  const getFilteredContacts = (_contactsParam: Contact[], searchTerm: string, activeFilter: FilterType) => {
     let filteredResults = [...displayContacts];
     
     // Apply search filter
@@ -585,7 +676,7 @@ export default function ContactsPage() {
       return groupContactsByDomain(filteredContacts);
     }
     return null;
-  }, [filteredContacts, isDomainFilterMode, search]);
+  }, [filteredContacts, isDomainFilterMode, search, groupContactsByDomain]);
 
   const handleSort = (key: keyof Contact | CustomColumnKey) => {
     setSortConfig(prevConfig => {
@@ -672,7 +763,7 @@ export default function ContactsPage() {
       if (!oldData) return newContacts;
       
       // Filter out any contacts that are marked as spam
-      const nonSpamContacts = oldData.filter(contact => !(contact as any).isSpam);
+      const nonSpamContacts = oldData.filter(contact => !(contact as ContactWithSpam).isSpam);
       
       // Create a Set of existing email addresses (case-insensitive)
       const existingEmails = new Set(nonSpamContacts.map(c => c.email.toLowerCase()));
@@ -774,32 +865,13 @@ export default function ContactsPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-red-500 mb-4">⚠️ Error</div>
-        <p className="text-gray-600 dark:text-gray-400">{error.message}</p>
+        <p className="text-gray-600 dark:text-gray-400">{error instanceof Error ? error.message : 'An unknown error occurred'}</p>
       </div>
     );
   }
 
   // Add these calculations before the return statement
-  const calculateMetrics = () => {
-    const needFollowUp = contacts.filter((contact: Contact) => 
-      new Date(contact.lastContacted) < thirtyDaysAgo
-    ).length;
-
-    const activeContacts = contacts.filter((contact: Contact) => 
-      new Date(contact.lastContacted) > thirtyDaysAgo
-    ).length;
-
-    const activeConnectionsPercentage = contacts.length 
-      ? Math.round((activeContacts / contacts.length) * 100) 
-      : 0;
-
-    return {
-      needFollowUp,
-      activeConnectionsPercentage
-    };
-  };
-
-  const { needFollowUp, activeConnectionsPercentage } = calculateMetrics();
+  // const { needFollowUp, activeConnectionsPercentage } = calculateMetrics();
 
   const handleCreateGroup = (name: string, members: Set<string>) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -811,7 +883,7 @@ export default function ContactsPage() {
     
     const updatedGroups = [...groups, newGroup];
     setGroups(updatedGroups);
-    localStorage.setItem('contact-groups', JSON.stringify(updatedGroups));
+    
     setShowGroupModal(false);
     setFilter(`group-${newGroup.id}`);
   };
@@ -820,7 +892,6 @@ export default function ContactsPage() {
     if (filter === `group-${groupId}`) setFilter('all');
     const updatedGroups = groups.filter(g => g.id !== groupId);
     setGroups(updatedGroups);
-    localStorage.setItem('contact-groups', JSON.stringify(updatedGroups));
   };
 
   const handleEditGroup = (group: { id: string; name: string; members: string[] }) => {
@@ -836,7 +907,6 @@ export default function ContactsPage() {
           : g
       );
       setGroups(updatedGroups);
-      localStorage.setItem('contact-groups', JSON.stringify(updatedGroups));
     } else {
       handleCreateGroup(name, members);
     }
@@ -900,7 +970,7 @@ export default function ContactsPage() {
     { id: 'domain', label: 'By Domain', icon: 'Globe', isGroup: false }
   ];
 
-  // Update the filter handling to include domain filter mode
+  // Update the filter handling logic
   const handleFilterClick = (filterId: string) => {
     if (filterId === 'domain') {
       setIsDomainFilterMode(!isDomainFilterMode);
@@ -909,7 +979,22 @@ export default function ContactsPage() {
         setSearch('');
       }
     } else {
-      setFilter(filter === filterId ? 'all' : filterId as FilterType);
+      const newFilter = filter === filterId ? 'all' : filterId as FilterType;
+      setFilter(newFilter);
+      
+      // Update URL if selecting or deselecting a group
+      if (newFilter !== 'all' && newFilter.startsWith('group-')) {
+        const groupId = newFilter.replace('group-', '');
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('group', groupId);
+        router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+      } else if (filterId.startsWith('group-')) {
+        // If deselecting a group, remove group param
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('group');
+        router.replace(pathname, { scroll: false });
+      }
+      
       // Turn off domain filter mode when selecting other filters
       if (isDomainFilterMode) {
         setIsDomainFilterMode(false);
@@ -927,35 +1012,35 @@ export default function ContactsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-8 space-y-6 md:space-y-8 max-w-full">
         {/* Enhanced Header Section */}
-        <div className="bg-gradient-to-r from-[#F4F4FF] to-[#FAFAFA] rounded-3xl p-8">
-          <div className="flex items-center justify-between mb-6">
+        <div className="bg-gradient-to-r from-[#F4F4FF] to-[#FAFAFA] rounded-3xl p-4 md:p-8 overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-[#1E1E3F] mb-2">Your Network</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-[#1E1E3F] mb-2">Your Network</h1>
               <p className="text-gray-600">Manage and organize your professional connections</p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
               <button
                 onClick={refreshContacts}
-                className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
                 title="Refresh contacts"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Refresh
+                <span className="hidden md:inline">Refresh</span>
               </button>
               {process.env.NODE_ENV === 'development' && (
                 <button
                   onClick={resetSessionOnly}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-100 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
                   title="Show cleanup assistant (testing only)"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  Test Cleanup
+                  <span className="hidden md:inline">Test Cleanup</span>
                 </button>
               )}
               {process.env.NODE_ENV === 'development' && (
@@ -978,72 +1063,155 @@ export default function ContactsPage() {
                     // Reload the page to simulate a fresh visit
                     setTimeout(() => window.location.reload(), 500);
                   }}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl hover:bg-red-100 transition-all"
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl hover:bg-red-100 transition-all text-sm"
                   title="Clear all session data (testing only)"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  Clear Session
+                  <span className="hidden md:inline">Clear Session</span>
+                </button>
+              )}
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={() => {
+                    // Show all localStorage keys and values
+                    const storage: Record<string, unknown> = {};
+                    Object.keys(localStorage).forEach(key => {
+                      try {
+                        storage[key] = JSON.parse(localStorage.getItem(key) || '');
+                      } catch {
+                        storage[key] = localStorage.getItem(key);
+                      }
+                    });
+                    console.log('All localStorage items:', storage);
+                    
+                    toast.success('Storage data logged to console', {
+                      duration: 2000,
+                      style: { background: '#F4F4FF', color: '#1E1E3F' }
+                    });
+                  }}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl hover:bg-blue-100 transition-all text-sm"
+                  title="Log storage data to console (testing only)"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span className="hidden md:inline">Debug Storage</span>
+                </button>
+              )}
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={() => {
+                    // Clear groups data
+                    Object.keys(localStorage).forEach(key => {
+                      if (key.startsWith('contact-groups_')) {
+                        localStorage.removeItem(key);
+                      }
+                    });
+                    
+                    // Also clear the legacy groups data
+                    localStorage.removeItem('contact-groups');
+                    
+                    // Reset groups state using the hook's setGroups
+                    setGroups([]);
+                    
+                    toast.success('All groups data cleared', {
+                      duration: 2000,
+                      style: { background: '#F4F4FF', color: '#1E1E3F' }
+                    });
+                  }}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl hover:bg-orange-100 transition-all text-sm"
+                  title="Clear all groups data (testing only)"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span className="hidden md:inline">Clear Groups</span>
                 </button>
               )}
               <button
                 onClick={() => setShowGroupModal(true)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#1E1E3F] to-[#2D2D5F] text-white rounded-xl hover:opacity-90 transition-all"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-[#1E1E3F] to-[#2D2D5F] text-white rounded-xl hover:opacity-90 transition-all text-sm"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Create Group
+                <span className="hidden md:inline">Create Group</span>
               </button>
               <button
                 onClick={() => setShowImportModal(true)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
-                Import CSV
+                <span className="hidden md:inline">Import CSV</span>
               </button>
               <button
                 onClick={() => setShowGroupExportModal(true)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                {currentGroup ? 'Export Group' : 'Export Contacts'}
+                <span className="hidden md:inline">{currentGroup ? 'Export Group' : 'Export'}</span>
               </button>
             </div>
           </div>
 
           {/* Filter section */}
-          <div className="mb-6 overflow-x-auto pb-2 hide-scrollbar">
-            <div className="flex gap-3 items-center">
-              {[...quickFilters, ...groups.map(group => ({
+          <div className="mb-4 md:mb-6 overflow-x-auto pb-2 hide-scrollbar">
+            <div className="flex gap-2 md:gap-3 items-center">
+              {/* Debug logging 
+                console.log('Rendering filters, current filter:', filter, 'loadedGroups:', loadedGroups, 'groups:', groups)
+              */}
+              {loadedGroups && [...quickFilters, ...groups.map(group => ({
                 id: `group-${group.id}`, 
                 label: group.name, 
                 isGroup: true,
                 groupData: group
-              } as GroupFilterItem))].map((filterItem: FilterItem) => (
-                <div key={filterItem.id} className="relative group">
-                  <FilterChip
-                    label={filterItem.id.startsWith('group-') 
-                      ? filterItem.label 
-                      : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
-                    icon={filterItem.isGroup ? 'Users' as IconName : filterItem.icon}
-                    selected={filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id}
-                    onClick={() => handleFilterClick(filterItem.id)}
-                    badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
-                    tooltipContent={filterItem.isGroup 
-                      ? `Filter by ${filterItem.label} group contacts` 
-                      : filterItem.id === 'domain'
-                        ? 'Filter contacts by domain (e.g., gmail, amazon.com)'
-                        : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
-                    showSelectedIcon={true}
-                  />
-                </div>
-              ))}
+              } as GroupFilterItem))].map((filterItem: FilterItem) => {
+                // Debug each filter item is commented out for production
+                // console.log('Filter item:', filterItem.id, 'selected:', filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id);
+                return (
+                  <div key={filterItem.id} className="relative group">
+                    <FilterChip
+                      label={filterItem.id.startsWith('group-') 
+                        ? filterItem.label 
+                        : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
+                      icon={filterItem.isGroup ? 'Users' as IconName : filterItem.icon}
+                      selected={filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id}
+                      onClick={() => handleFilterClick(filterItem.id)}
+                      badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
+                      tooltipContent={filterItem.isGroup 
+                        ? `Filter by ${filterItem.label} group contacts` 
+                        : filterItem.id === 'domain'
+                          ? 'Filter contacts by domain (e.g., gmail, amazon.com)'
+                          : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
+                      showSelectedIcon={true}
+                    />
+                    {filterItem.isGroup && (
+                      <div className="absolute right-0 top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity -mt-2 -mr-2">
+                        <button 
+                          onClick={() => handleEditGroup(filterItem.groupData)}
+                          className="bg-white rounded-full p-1 shadow-md"
+                          title="Edit group"
+                        >
+                          <Icon name="Edit2" size={12} className="text-gray-500" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteGroup(filterItem.groupData.id)}
+                          className="bg-white rounded-full p-1 shadow-md"
+                          title="Delete group"
+                        >
+                          <Icon name="Trash2" size={12} className="text-red-500" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1144,7 +1312,8 @@ export default function ContactsPage() {
               onColumnChange={(columns) => setActiveColumns(columns as ColumnKey[])}
               onAddColumn={handleAddColumn}
               onEditColumn={(key, newLabel) => {
-                setCustomColumns(prev => prev.map(col => 
+                // Also update availableColumnsList to show the new label in the UI
+                setAvailableColumnsList(prev => prev.map(col => 
                   col.key === key ? { ...col, label: newLabel } : col
                 ));
               }}

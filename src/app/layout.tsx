@@ -19,7 +19,7 @@ export default async function RootLayout({
   const session = await getServerSession(authOptions);
 
   return (
-    <html lang="en">
+    <html lang="en" className={inter.className}>
       <body>
         <Providers session={session}>
           <div className="min-h-screen bg-[#FAFAFA]">

@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Contact } from '@/types';
 import { Button, FilterChip, Icon } from '@/components/ui';
 import { toast } from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 // Optional: For the confetti effect when creating groups
 import confetti from 'canvas-confetti';
 // interface Contact {

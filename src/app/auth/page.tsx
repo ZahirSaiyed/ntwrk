@@ -7,7 +7,6 @@ import { useState, useEffect } from 'react';
 
 export default function Auth() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {

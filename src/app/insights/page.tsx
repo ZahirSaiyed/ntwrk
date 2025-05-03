@@ -4,33 +4,29 @@ import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import NetworkScore from '@/components/insights/NetworkScore';
 import TimeframeSelector from '@/components/insights/TimeframeSelector';
-import ActionableInsights from '@/components/insights/ActionableInsights';
 import RelationshipTimeline from '@/components/insights/RelationshipTimeline';
 import SmartInsights from '@/components/insights/SmartInsights';
-import OutcomeSelector from '@/components/insights/OutcomeSelector';
-import NetworkMap from '@/components/insights/NetworkMap';
-import { motion } from 'framer-motion';
 
 export default function InsightsPage() {
-  const router = useRouter();
   const { data: session } = useSession();
   const [selectedTimeframe, setSelectedTimeframe] = useState<'30d' | '90d' | '1y'>('30d');
   const [currentView, setCurrentView] = useState<'organize' | 'analyze'>('analyze');
 
-  const { data: contacts = [], isLoading } = useQuery({
-    queryKey: ['contacts', session?.user?.email],
-    queryFn: async () => {
+  const { data: contacts = [], isLoading } = useQuery(
+    ['contacts', session?.user?.email],
+    async () => {
       const response = await fetch('/api/contacts');
       if (!response.ok) throw new Error('Failed to fetch contacts');
       return response.json();
     },
-    enabled: !!session?.user?.email,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-  });
+    {
+      enabled: !!session?.user?.email,
+      staleTime: 5 * 60 * 1000,
+      cacheTime: 30 * 60 * 1000,
+    }
+  );
 
   if (isLoading) return <LoadingState />;
 

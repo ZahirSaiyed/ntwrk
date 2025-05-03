@@ -1,16 +1,11 @@
 'use client';
 
 import AppLayout from '@/components/Layout/AppLayout';
-import { useSession } from 'next-auth/react';
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import OutcomeSelector from '@/components/insights/OutcomeSelector';
-import ImportStatus from '@/components/ImportStatus';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { data: session } = useSession();
 
   const handleOutcomeSelect = (outcome: 'all' | 'organize' | 'engage' | 'analyze' | null) => {
     if (!outcome) return;

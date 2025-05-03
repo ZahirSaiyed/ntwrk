@@ -11,6 +11,11 @@ const nextConfig = {
     // Will be available on both server and client
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   },
+  // Performance optimizations
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+    serverComponentsHmrCache: true,
+  },
 };
 
 module.exports = nextConfig;
