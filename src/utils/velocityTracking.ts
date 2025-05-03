@@ -1,13 +1,18 @@
 import { Contact } from '@/types';
 import { adaptContact } from './contactAdapter';
 
-export function calculateVelocityScore(contact: Contact): number {
+export interface VelocityScore {
+  score: number;
+  trend: 'rising' | 'stable' | 'falling';
+}
+
+export function calculateVelocityScore(contact: Contact): VelocityScore {
   // Use our adapter to ensure backward compatibility
   const adaptedContact = adaptContact(contact);
   
   // Skip if no interactions
   if (!adaptedContact.interactions || adaptedContact.interactions.length === 0) {
-    return 0;
+    return { score: 0, trend: 'stable' };
   }
   
   // Recently contacted score (higher if contacted more recently)
@@ -43,6 +48,31 @@ export function calculateVelocityScore(contact: Contact): number {
   
   // Final score - weighted average
   const finalScore = (recencyScore * 0.4) + (frequencyScore * 0.4) + (consistencyScore * 0.2);
+  const score = Math.min(100, Math.round(finalScore)); // Cap at 100
   
-  return Math.min(100, Math.round(finalScore)); // Cap at 100
+  // Determine trend based on recent activity
+  let trend: 'rising' | 'stable' | 'falling' = 'stable';
+  
+  // Calculate trend based on interactions in the last 90 days vs prior period
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  
+  const oneeEightyDaysAgo = new Date();
+  oneeEightyDaysAgo.setDate(oneeEightyDaysAgo.getDate() - 180);
+  
+  const recentCount = adaptedContact.interactions.filter(
+    i => new Date(i.date) > ninetyDaysAgo
+  ).length;
+  
+  const priorCount = adaptedContact.interactions.filter(
+    i => new Date(i.date) > oneeEightyDaysAgo && new Date(i.date) <= ninetyDaysAgo
+  ).length;
+  
+  if (recentCount > priorCount * 1.2) {
+    trend = 'rising';
+  } else if (recentCount < priorCount * 0.8) {
+    trend = 'falling';
+  }
+  
+  return { score, trend };
 }

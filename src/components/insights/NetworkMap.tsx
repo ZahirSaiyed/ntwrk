@@ -1,9 +1,8 @@
-import { useEffect, useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 import { Contact } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { calculateVelocityScore } from '@/utils/velocityTracking';
-import { getNodeColor } from '@/utils/networkMapHelpers';
+import { calculateVelocityScore, VelocityScore } from '@/utils/velocityTracking';
 
 interface NetworkMapProps {
   contacts: Contact[];
@@ -16,14 +15,14 @@ interface NetworkMapProps {
 interface NetworkNode extends d3.SimulationNodeDatum {
   id: string;
   name: string;
-  velocity: any; // Or define proper type
+  velocity: VelocityScore;
   radius: number;
   group: string;
 }
 
 const calculateNodeSize = (contact: Contact) => {
-  const velocityScore = calculateVelocityScore(contact)?.score || 0;
-  return Math.max(5, Math.min(15, velocityScore * 2)); // Returns size between 5-15px
+  const velocityScore = calculateVelocityScore(contact).score;
+  return Math.max(5, Math.min(15, velocityScore * 0.15)); // Returns size between 5-15px
 };
 
 const generateNetworkLinks = (contacts: Contact[]) => {
@@ -48,10 +47,24 @@ const generateNetworkLinks = (contacts: Contact[]) => {
 };
 
 const inferContactGroup = (contact: Contact) => {
-  const velocityScore = calculateVelocityScore(contact)?.score || 0;
-  if (velocityScore >= 8) return 'Strong';
-  if (velocityScore >= 5) return 'Stable';
+  const velocityScore = calculateVelocityScore(contact).score;
+  if (velocityScore >= 80) return 'Strong';
+  if (velocityScore >= 50) return 'Stable';
   return 'Needs Attention';
+};
+
+// Function to get node color based on trend
+const getNodeColor = (trend: 'rising' | 'stable' | 'falling' | undefined) => {
+  switch (trend) {
+    case 'rising':
+      return '#22C55E'; // Green
+    case 'stable':
+      return '#3B82F6'; // Blue
+    case 'falling':
+      return '#EAB308'; // Yellow
+    default:
+      return '#6B7280'; // Gray
+  }
 };
 
 // Add this function before the useEffect
@@ -128,7 +141,7 @@ export default function NetworkMap({ contacts, timeframe, isExpanded, onToggleEx
       .data(nodes)
       .join("circle")
       .attr("r", d => d.radius)
-      .attr("fill", d => getNodeColor(d.velocity?.trend))
+      .attr("fill", d => getNodeColor(d.velocity.trend))
       .attr("stroke", "#fff")
       .attr("stroke-width", 2)
       .call(drag(simulation));
@@ -145,7 +158,7 @@ export default function NetworkMap({ contacts, timeframe, isExpanded, onToggleEx
 
     // Add tooltips
     node.append("title")
-      .text(d => `${d.name}\nVelocity: ${d.velocity?.score || 'N/A'}\nGroup: ${d.group}`);
+      .text(d => `${d.name}\nVelocity: ${d.velocity.score}\nGroup: ${d.group}`);
 
     // Update positions
     simulation.on("tick", () => {
