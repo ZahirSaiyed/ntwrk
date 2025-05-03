@@ -1,6 +1,7 @@
 import { Contact } from '@/types';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
 
 interface CustomField {
   id: string;
@@ -187,6 +188,20 @@ export default function ContactDetail({ contact, onClose, onSave, onAddColumn }:
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#1E1E3F] focus:ring focus:ring-[#1E1E3F]/20 transition-all"
                 placeholder="Enter company..."
               />
+            </motion.div>
+            
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="group"
+            >
+              <label className="block text-sm font-medium text-gray-700 mb-2 group-hover:text-[#1E1E3F] transition-colors">
+                Last Emailed
+              </label>
+              <div className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-700">
+                {editedContact.lastContacted ? format(new Date(editedContact.lastContacted), 'MMMM d, yyyy') : 'No data'}
+              </div>
             </motion.div>
           </div>
 

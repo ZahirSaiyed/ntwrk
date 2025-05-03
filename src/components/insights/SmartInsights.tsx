@@ -1,8 +1,9 @@
 import { Contact, Group } from "@/types";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { calculateVelocityScore } from '@/utils/velocityTracking';
 import GroupMembers from '@/components/insights/GroupMembers';
 import { formatDistanceToNow } from 'date-fns';
+import { adaptContact } from '@/utils/contactAdapter';
 
 // Add this before the SmartInsights component
 function inferRegionFromDomain(domain: string): string {
@@ -22,6 +23,11 @@ interface SmartInsightsProps {
 export default function SmartInsights({ contacts, onGroupCreate }: SmartInsightsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // First adapt all contacts for processing
+  const adaptedContacts = useMemo(() => {
+    return contacts.map(contact => adaptContact(contact));
+  }, [contacts]);
+
   const generateInsights = () => {
     const now = new Date();
     
@@ -32,7 +38,7 @@ export default function SmartInsights({ contacts, onGroupCreate }: SmartInsights
       region: string;
     }
     
-    const domainGroups = contacts.reduce<Record<string, DomainGroup>>((acc, contact) => {
+    const domainGroups = adaptedContacts.reduce<Record<string, DomainGroup>>((acc, contact) => {
       const domain = contact.email.split('@')[1];
       if (!acc[domain]) {
         acc[domain] = {
@@ -76,12 +82,12 @@ export default function SmartInsights({ contacts, onGroupCreate }: SmartInsights
       }
     };
 
-    contacts.forEach(contact => {
+    adaptedContacts.forEach(contact => {
       // Calculate total interactions in last 30 days
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const recentInteractions = contact.interactions.filter(i => 
+      const recentInteractions = contact.interactions?.filter(i => 
         new Date(i.date) > thirtyDaysAgo
-      ).length;
+      ).length || 0;
 
       // Categorize based on monthly interaction rate
       if (recentInteractions >= 12) { // 3+ per week = daily
@@ -117,7 +123,12 @@ export default function SmartInsights({ contacts, onGroupCreate }: SmartInsights
       }
     };
 
-    contacts.forEach(contact => {
+    adaptedContacts.forEach(contact => {
+      // Skip contacts with no interactions
+      if (!contact.interactions || contact.interactions.length === 0) {
+        return;
+      }
+
       // Check for promotional patterns
       const isLikelyPromotional = 
         // All messages are received (never sent by us)

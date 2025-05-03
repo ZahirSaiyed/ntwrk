@@ -2,6 +2,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, Ca
 import { format, subDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Contact } from '@/types';
+import { adaptContact } from '@/utils/contactAdapter';
 
 interface RelationshipTimelineProps {
   contacts: Contact[];
@@ -24,32 +25,51 @@ export default function RelationshipTimeline({ contacts, timeframe, isExpanded, 
       
       // Count interactions for this date
       const dayInteractions = contacts.reduce((acc, contact) => {
+        const adaptedContact = adaptContact(contact);
         const dayContacts = new Set();
-        contact.interactions.forEach(interaction => {
-          const interactionDate = new Date(interaction.date);
-          // Convert interaction date to UTC and set to start of day
-          const utcInteractionDate = new Date(Date.UTC(
-            interactionDate.getUTCFullYear(),
-            interactionDate.getUTCMonth(),
-            interactionDate.getUTCDate()
-          ));
-          
-          if (utcInteractionDate.getTime() === utcDate.getTime()) {
-            if (interaction.type === 'sent') {
+        
+        // First check for sentDates if available
+        if (contact.sentDates && contact.sentDates.length > 0) {
+          contact.sentDates.forEach(sentDate => {
+            const interactionDate = new Date(sentDate);
+            // Convert interaction date to UTC and set to start of day
+            const utcInteractionDate = new Date(Date.UTC(
+              interactionDate.getUTCFullYear(),
+              interactionDate.getUTCMonth(),
+              interactionDate.getUTCDate()
+            ));
+            
+            if (utcInteractionDate.getTime() === utcDate.getTime()) {
               acc.sent++;
+              dayContacts.add(contact.email);
             }
-            if (interaction.type === 'received') acc.received++;
-            dayContacts.add(contact.email);
-          }
-        });
+          });
+        } 
+        // Fall back to interactions for backward compatibility
+        else if (adaptedContact.interactions) {
+          adaptedContact.interactions.forEach(interaction => {
+            const interactionDate = new Date(interaction.date);
+            // Convert interaction date to UTC and set to start of day
+            const utcInteractionDate = new Date(Date.UTC(
+              interactionDate.getUTCFullYear(),
+              interactionDate.getUTCMonth(),
+              interactionDate.getUTCDate()
+            ));
+            
+            if (utcInteractionDate.getTime() === utcDate.getTime() && interaction.type === 'sent') {
+              acc.sent++;
+              dayContacts.add(contact.email);
+            }
+          });
+        }
+        
         acc.uniqueContacts = dayContacts.size;
         return acc;
-      }, { sent: 0, received: 0, uniqueContacts: 0 });
+      }, { sent: 0, uniqueContacts: 0 });
 
       data.push({
         date: dateStr,
         sent: dayInteractions.sent,
-        received: dayInteractions.received,
         uniqueContacts: dayInteractions.uniqueContacts
       });
     }
@@ -65,8 +85,7 @@ export default function RelationshipTimeline({ contacts, timeframe, isExpanded, 
         <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-100">
           <p className="font-medium text-gray-900">{format(new Date(label), 'MMM d, yyyy')}</p>
           <p className="text-sm text-green-600">Sent: {payload[0].value}</p>
-          <p className="text-sm text-blue-600">Received: {payload[1].value}</p>
-          <p className="text-sm text-gray-600">Active Contacts: {payload[2].value}</p>
+          <p className="text-sm text-gray-600">Active Contacts: {payload[1].value}</p>
         </div>
       );
     }
@@ -79,7 +98,7 @@ export default function RelationshipTimeline({ contacts, timeframe, isExpanded, 
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-[#1E1E3F]">Activity Timeline</h2>
-            <p className="text-sm text-gray-500">Track your network engagement over time</p>
+            <p className="text-sm text-gray-500">Track your outbound engagement over time</p>
           </div>
           <motion.button
             animate={{ rotate: isExpanded ? 180 : 0 }}
@@ -120,16 +139,7 @@ export default function RelationshipTimeline({ contacts, timeframe, isExpanded, 
                       strokeWidth={2}
                       dot={{ r: 4 }}
                       activeDot={{ r: 6 }}
-                      name="Messages Sent"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="received" 
-                      stroke="#3B82F6" 
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                      name="Messages Received"
+                      name="Emails Sent"
                     />
                     <Line 
                       type="monotone" 

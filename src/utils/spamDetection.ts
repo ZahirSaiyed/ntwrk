@@ -1,10 +1,16 @@
 import { Contact } from '@/types';
 import { EMAIL_PATTERNS } from '../components/insights/InboxCleanupAssistant';
+import { adaptContact } from './contactAdapter';
 
 export interface SpamDetectionResult {
   isSpam: boolean;
   reasons: string[];
   confidence: number;
+}
+
+export interface DetectionResult {
+  isSpam: boolean;
+  reason?: string;
 }
 
 export function analyzeContact(contact: Contact): SpamDetectionResult {
@@ -83,4 +89,68 @@ function matchesEmailPatterns(email: string): string[] {
   });
   
   return matches;
+} 
+
+/**
+ * Detects potential spam contacts based on interaction patterns
+ */
+export function detectSpamContacts(contact: Contact): DetectionResult {
+  // Adapt contact to ensure it has proper interactions structure
+  const adaptedContact = adaptContact(contact);
+  
+  // Skip contacts without interactions
+  if (!adaptedContact.interactions || adaptedContact.interactions.length === 0) {
+    return { isSpam: false };
+  }
+
+  // Check if this is a promotional/marketing email (always receives, never replies)
+  if (adaptedContact.interactions) {
+    // Emails that we ONLY received from, never sent to
+    if (adaptedContact.interactions.length > 10 &&
+        adaptedContact.interactions.every(i => i.type === 'received')) {
+      return { 
+        isSpam: true, 
+        reason: 'Promotional (always received, never sent)'
+      };
+    }
+    
+    // Emails that we ONLY sent to, never received from
+    if (adaptedContact.interactions.length > 3 &&
+        adaptedContact.interactions.every(i => i.type === 'sent')) {
+      return { 
+        isSpam: false, // These are now our primary contacts from sent mail
+        reason: 'Always sent, never received'
+      };
+    }
+
+    // Check for automated/bulk email patterns
+    const timings = adaptedContact.interactions
+      .map(i => new Date(i.date).getTime())
+      .sort((a, b) => a - b);
+
+    // Check for regular interval patterns (a sign of automated emails)
+    if (timings.length >= 3) {
+      const intervals = [];
+      for (let i = 1; i < timings.length; i++) {
+        intervals.push(timings[i] - timings[i-1]);
+      }
+      
+      const avgInterval = intervals.reduce((sum, int) => sum + int, 0) / intervals.length;
+      
+      // Calculate standard deviation of intervals
+      const stdDev = Math.sqrt(
+        intervals.reduce((sum, int) => sum + Math.pow(int - avgInterval, 2), 0) / intervals.length
+      );
+      
+      // If intervals are very regular (low standard deviation relative to average)
+      if (stdDev / avgInterval < 0.1 && adaptedContact.interactions.length > 5) {
+        return { 
+          isSpam: true, 
+          reason: 'Regular timing pattern (likely automated)'
+        };
+      }
+    }
+  }
+  
+  return { isSpam: false };
 } 

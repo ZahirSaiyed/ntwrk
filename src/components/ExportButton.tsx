@@ -1,12 +1,14 @@
 import { Contact } from '@/types';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { format, parseISO } from 'date-fns';
 
 interface ExportButtonProps {
   contacts: Contact[];
   className?: string;
+  groupName?: string;
 }
 
-export default function ExportButton({ contacts, className = '' }: ExportButtonProps) {
+export default function ExportButton({ contacts, className = '', groupName }: ExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -21,15 +23,16 @@ export default function ExportButton({ contacts, className = '' }: ExportButtonP
   }, []);
 
   const formatContactsForCSV = (contacts: Contact[]) => {
-    const headers = ['Name', 'Email', 'Company', 'Last Contacted', 'Relationship Score', 'Response Rate'];
+    const headers = ['Name', 'Email', 'Company', 'Last Emailed', 'Relationship Score', 'Response Rate'];
     
     const rows = contacts.map(contact => [
       contact.name,
       contact.email,
       contact.company || '',
-      new Date(contact.lastContacted).toLocaleDateString(),
-      contact.relationshipStrength?.score.toString() || '',
-      contact.velocity?.interactionMetrics.responseRate.toString() || ''
+      format(parseISO(contact.lastContacted), 'yyyy-MM-dd'),
+      contact.relationshipStrength?.score ? `${contact.relationshipStrength.score}/100` : 'N/A',
+      contact.velocity?.interactionMetrics?.responseRate ? 
+        `${Math.round(contact.velocity.interactionMetrics.responseRate * 100)}%` : 'N/A'
     ]);
 
     return [
@@ -57,13 +60,45 @@ export default function ExportButton({ contacts, className = '' }: ExportButtonP
 
   const handleExportCSV = () => {
     const csvContent = formatContactsForCSV(contacts);
-    downloadFile(csvContent, 'contacts.csv', 'text/csv');
+    downloadFile(csvContent, `${groupName || 'Contacts'}-${format(new Date(), 'yyyy-MM-dd')}.csv`, 'text/csv');
   };
 
   const handleExportJSON = () => {
     const jsonContent = formatContactsForJSON(contacts);
     downloadFile(jsonContent, 'contacts.json', 'application/json');
   };
+
+  const handleExport = useCallback(() => {
+    if (!contacts || contacts.length === 0) return;
+
+    const headers = ['Name', 'Email', 'Company', 'Last Emailed', 'Relationship Score', 'Response Rate'];
+
+    const data = contacts.map(contact => {
+      // Format the data row
+      return [
+        contact.name,
+        contact.email,
+        contact.company || '',
+        format(parseISO(contact.lastContacted), 'yyyy-MM-dd'), // Format date as ISO string
+        contact.relationshipStrength?.score ? `${contact.relationshipStrength.score}/100` : 'N/A',
+        contact.velocity?.interactionMetrics?.responseRate ? 
+          `${Math.round(contact.velocity.interactionMetrics.responseRate * 100)}%` : 'N/A'
+      ];
+    });
+
+    // Add headers as the first row
+    const csvContent = [headers, ...data].map(e => e.join(',')).join('\n');
+
+    // Create a CSV file and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${groupName || 'Contacts'}-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [contacts, groupName]);
 
   return (
     <div className="relative" ref={dropdownRef}>

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Contact } from '@/types';
+import { format, parseISO } from 'date-fns';
 
 interface GroupExportModalProps {
   isOpen: boolean;
@@ -99,7 +100,7 @@ export default function GroupExportModal({ isOpen, onClose, groupName, contacts 
       // Format and download the file
       const content = selectedFormat === 'json' 
         ? JSON.stringify(contacts, null, 2)
-        : formatContactsForCSV(contacts);
+        : generateCSV();
       
       const type = selectedFormat === 'json' ? 'application/json' : 'text/csv';
       const extension = selectedFormat === 'json' ? 'json' : 'csv';
@@ -132,22 +133,23 @@ export default function GroupExportModal({ isOpen, onClose, groupName, contacts 
     }, 2000);
   };
 
-  const formatContactsForCSV = (contacts: Contact[]) => {
-    const headers = ['Name', 'Email', 'Company', 'Last Contacted', 'Relationship Score', 'Response Rate'];
-    
-    const rows = contacts.map(contact => [
+  const generateCSV = () => {
+    if (!contacts || contacts.length === 0) return '';
+
+    const headers = ['Name', 'Email', 'Company', 'Last Emailed', 'Relationship Score', 'Response Rate'];
+
+    const data = contacts.map((contact: Contact) => [
       contact.name,
       contact.email,
       contact.company || '',
-      new Date(contact.lastContacted).toLocaleDateString(),
-      contact.relationshipStrength?.score.toString() || '',
-      contact.velocity?.interactionMetrics.responseRate.toString() || ''
+      contact.lastContacted ? format(parseISO(contact.lastContacted), 'yyyy-MM-dd') : '',
+      contact.relationshipStrength?.score ? `${contact.relationshipStrength.score}/100` : 'N/A',
+      contact.velocity?.interactionMetrics?.responseRate ? 
+        `${Math.round(contact.velocity.interactionMetrics.responseRate * 100)}%` : 'N/A'
     ]);
 
-    return [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
+    const csvData = [headers, ...data].map(row => row.join(',')).join('\n');
+    return csvData;
   };
 
   const copyShareableLink = () => {

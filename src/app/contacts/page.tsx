@@ -3,7 +3,7 @@
 import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from "next-auth/react";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import GroupModal from "@/components/GroupModal";
 import { Contact } from '@/types';
@@ -21,10 +21,28 @@ import { IconName } from '@/components/ui/icons/Icon';
 import { Icon } from '@/components/ui';
 import React from 'react';
 import DomainStats from '@/components/DomainStats';
+import { adaptContacts } from '@/utils/contactAdapter';
+
+// Add a custom useDebounce hook after the imports and before the component code
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 // Helper function to get the consistent session storage key
 const getContactsSessionKey = (userEmail: string | null | undefined) => {
-  return `contacts_${userEmail || 'unknown'}`;
+  return `sentRecipients_${userEmail || 'unknown'}`;
 };
 
 // Helper function to get user-specific group storage key
@@ -179,6 +197,9 @@ export default function ContactsPage() {
   const groupIdFromUrl = searchParams.get('group');
   
   const [search, setSearch] = useState('');
+  const [inputSearch, setInputSearch] = useState('');
+  const debouncedSearch = useDebounce(inputSearch, 200);
+  
   const [showGroupModal, setShowGroupModal] = useState(false);
   
   // Use the custom hook for groups and filter persistence
@@ -288,7 +309,7 @@ export default function ContactsPage() {
       // User logged out or session expired
       // Clear session cache
       Object.keys(sessionStorage).forEach(key => {
-        if (key.startsWith('contacts_')) {
+        if (key.startsWith('sentRecipients_')) {
           sessionStorage.removeItem(key);
         }
       });
@@ -301,7 +322,7 @@ export default function ContactsPage() {
 
 
   const { data: contacts = [], isLoading, error } = useQuery<Contact[]>(
-    ['contacts', session?.user?.email],
+    ['sentRecipients', session?.user?.email],
     async () => {
       // Check if we have cached data in sessionStorage
       const sessionKey = getContactsSessionKey(session?.user?.email);
@@ -311,52 +332,37 @@ export default function ContactsPage() {
         console.log('Loading contacts from session cache');
         // Show a non-intrusive toast notification
         setTimeout(() => {
-          toast.success('Contacts loaded from cache', { 
+          toast.success('Contacts loaded from cache', {
             duration: 2000,
-            style: { background: '#F4F4FF', color: '#1E1E3F' },
-            icon: '⚡'
+            position: 'bottom-right',
+            style: { backgroundColor: '#F4F4FF', color: '#1E1E3F' }
           });
-        }, 100);
-        
+        }, 500);
         // Set a flag to indicate data came from cache
-        sessionStorage.setItem('contacts_loaded_from_cache', 'true');
-        
-        return JSON.parse(cachedData);
+        sessionStorage.setItem('sentRecipients_loaded_from_cache', 'true');
+        return adaptContacts(JSON.parse(cachedData));
       }
-      
+
       console.log('Fetching contacts from API');
       const response = await fetch('/api/contacts');
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Contact fetch error:', errorData);
-        // Clear potentially corrupted cache on error
-        sessionStorage.removeItem(sessionKey);
-        throw new Error(errorData.error || 'Failed to fetch contacts');
+        throw new Error('Failed to fetch contacts');
       }
       
       const data = await response.json();
-      
-      // Store the fetched data in sessionStorage
+      // Cache the data in sessionStorage for next time
       sessionStorage.setItem(sessionKey, JSON.stringify(data));
-      
       // Set a flag to indicate data came from API
-      sessionStorage.setItem('contacts_loaded_from_cache', 'false');
-      
-      // Show a non-intrusive toast notification
-      setTimeout(() => {
-        toast.success('Contacts loaded from server', { 
-          duration: 2000,
-          style: { background: '#F4F4FF', color: '#1E1E3F' },
-          icon: '🔄'
-        });
-      }, 100);
-      
-      return data;
+      sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
+      return adaptContacts(data);
     },
     {
       enabled: !!session?.user?.email,
-      staleTime: 5 * 60 * 1000,
-      cacheTime: 30 * 60 * 1000,
+      // Set the stale time to 6 hours instead of infinity
+      staleTime: 6 * 60 * 60 * 1000, // 6 hours in milliseconds
+      // Set the cache time to 8 hours
+      cacheTime: 8 * 60 * 60 * 1000 // 8 hours in milliseconds
     }
   );
 
@@ -386,7 +392,7 @@ export default function ContactsPage() {
     }
     
     // Check if data was loaded from cache
-    const loadedFromCache = sessionStorage.getItem('contacts_loaded_from_cache') === 'true';
+    const loadedFromCache = sessionStorage.getItem('sentRecipients_loaded_from_cache') === 'true';
     
     // Get the session key for this user's cleanup assistant state
     const sessionKey = `cleanup-shown-in-session-${session.user.email}`;
@@ -415,14 +421,14 @@ export default function ContactsPage() {
     const sessionKey = getContactsSessionKey(session?.user?.email);
     sessionStorage.removeItem(sessionKey);
     
-    // Set contacts_loaded_from_cache to false since we're forcing a refresh
-    sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+    // Set sentRecipients_loaded_from_cache to false since we're forcing a refresh
+    sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
     
     // Set force_show_cleanup to true since this is an explicit refresh
     sessionStorage.setItem('force_show_cleanup', 'true');
     sessionStorage.removeItem('cleanup_just_closed'); // Clear this flag
     
-    queryClient.invalidateQueries({ queryKey: ['contacts', session?.user?.email] });
+    queryClient.invalidateQueries({ queryKey: ['sentRecipients', session?.user?.email] });
   }, [queryClient, session?.user?.email]);
 
 
@@ -433,7 +439,7 @@ export default function ContactsPage() {
       // Set consistent flags for testing
       sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
       sessionStorage.setItem('force_show_cleanup', 'true');
-      sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+      sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
       sessionStorage.removeItem('cleanup_just_closed'); // Make sure we clear this
       
       // Show cleanup assistant immediately
@@ -466,8 +472,8 @@ export default function ContactsPage() {
     },
     {
       key: 'lastContacted' as ColumnKey,
-      label: 'Last Contacted',
-      description: 'Most recent interaction date',
+      label: 'Last Emailed',
+      description: 'Most recent email sent',
       render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
     },
     {
@@ -742,7 +748,7 @@ export default function ContactsPage() {
     },
     onSuccess: (updatedContact) => {
       console.log('Contact updated:', updatedContact);
-      queryClient.setQueryData(['contacts', session?.user?.email], (oldData: Contact[] | undefined) => {
+      queryClient.setQueryData(['sentRecipients', session?.user?.email], (oldData: Contact[] | undefined) => {
         if (!oldData) return [updatedContact];
         const newData = oldData.map(contact => 
           contact.email === updatedContact.email ? updatedContact : contact
@@ -759,7 +765,7 @@ export default function ContactsPage() {
   });
 
   const handleImportComplete = useCallback((newContacts: Contact[]) => {
-    queryClient.setQueryData(['contacts', session?.user?.email], (oldData: Contact[] | undefined) => {
+    queryClient.setQueryData(['sentRecipients', session?.user?.email], (oldData: Contact[] | undefined) => {
       if (!oldData) return newContacts;
       
       // Filter out any contacts that are marked as spam
@@ -793,7 +799,7 @@ export default function ContactsPage() {
           // Set flags for consistent behavior
           sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
           sessionStorage.setItem('force_show_cleanup', 'true');
-          sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+          sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
         }
         
         toast.success(`Imported ${uniqueNewContacts.length} new contacts`, {
@@ -841,6 +847,11 @@ export default function ContactsPage() {
       }
     }
   };
+
+  // Update search state when debounced value changes
+  useEffect(() => {
+    setSearch(debouncedSearch);
+  }, [debouncedSearch]);
 
   if (isLoading) {
     return (
@@ -941,7 +952,7 @@ export default function ContactsPage() {
       ]
     }));
     
-    queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+    queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
     
     setActiveColumns(prev => {
       if (prev.includes(customKey)) return prev;
@@ -1053,7 +1064,7 @@ export default function ContactsPage() {
                     // 1. Force show cleanup (for testing)
                     sessionStorage.setItem('force_show_cleanup', 'true');
                     // 2. Mark that we're not loading from cache
-                    sessionStorage.setItem('contacts_loaded_from_cache', 'false');
+                    sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
                     
                     toast.success('All session data cleared', {
                       duration: 2000,
@@ -1222,8 +1233,8 @@ export default function ContactsPage() {
             <div className="relative">
               <input
                 type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={inputSearch}
+                onChange={(e) => setInputSearch(e.target.value)}
                 placeholder={getSearchPlaceholder()}
                 className={`w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent transition-all ${(isDomainFilterMode || (search && isDomainSearch(search))) ? 'border-[#4B4BA6] bg-[#F4F4FF]' : ''}`}
               />
@@ -1245,9 +1256,12 @@ export default function ContactsPage() {
                   Domain Search
                 </div>
               )}
-              {search && (
+              {inputSearch && (
                 <button
-                  onClick={() => setSearch('')}
+                  onClick={() => {
+                    setInputSearch('');
+                    setSearch('');
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   ✕
@@ -1411,7 +1425,7 @@ export default function ContactsPage() {
               ...contact,
               isSpam: emails.includes(contact.email)
             } as ContactWithSpam));
-            queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+            queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
             
             // Update sessionStorage with the new data
             const sessionKey = getContactsSessionKey(session?.user?.email);
@@ -1423,7 +1437,7 @@ export default function ContactsPage() {
               isSpam: (contact as ContactWithSpam).isSpam === undefined ? false : 
                      email === contact.email ? false : (contact as ContactWithSpam).isSpam
             } as ContactWithSpam));
-            queryClient.setQueryData(['contacts', session?.user?.email], updatedContacts);
+            queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
             
             // Update sessionStorage with the new data
             const sessionKey = getContactsSessionKey(session?.user?.email);

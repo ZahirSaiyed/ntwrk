@@ -7,12 +7,13 @@ export interface Contact {
     score: number;
     trend: 'rising' | 'stable' | 'falling';
   };
-  interactions: {
+  interactions?: {
     date: string;
     channel: 'email' | 'message' | 'call';
     type: 'sent' | 'received';
     participants?: string[];
   }[];
+  sentDates?: string[];
   velocity?: {
     score: number;
     trend: 'rising' | 'stable' | 'falling';
