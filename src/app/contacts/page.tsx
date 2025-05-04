@@ -1190,25 +1190,12 @@ export default function ContactsPage() {
                           ? 'Filter contacts by domain (e.g., gmail, amazon.com)'
                           : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
                       showSelectedIcon={true}
+                      onEdit={filterItem.isGroup ? 
+                        () => handleEditGroup(filterItem.groupData) : undefined}
+                      onDelete={filterItem.isGroup ? 
+                        () => handleDeleteGroup(filterItem.groupData.id) : undefined}
+                      editMode={filterItem.isGroup ? 'modal' : 'inline'}
                     />
-                    {filterItem.isGroup && (
-                      <div className="absolute right-0 top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity -mt-2 -mr-2">
-                        <button 
-                          onClick={() => handleEditGroup(filterItem.groupData)}
-                          className="bg-white rounded-full p-1 shadow-md"
-                          title="Edit group"
-                        >
-                          <Icon name="Edit2" size={12} className="text-gray-500" />
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteGroup(filterItem.groupData.id)}
-                          className="bg-white rounded-full p-1 shadow-md"
-                          title="Delete group"
-                        >
-                          <Icon name="Trash2" size={12} className="text-red-500" />
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })}
