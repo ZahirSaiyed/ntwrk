@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 
 interface Props {
   onSelect: (outcome: 'all' | 'organize' | 'analyze' | null) => void;
@@ -9,7 +10,7 @@ interface Props {
 export default function OutcomeSelector({ onSelect, selectedOutcome, variant = 'dashboard' }: Props) {
   const dashboardOutcomes = [
     {
-      id: 'all',
+      id: 'all' as const,
       title: 'View My Network',
       description: 'See all your contacts in one place',
       icon: '/undraw_contacts.svg',
@@ -18,7 +19,7 @@ export default function OutcomeSelector({ onSelect, selectedOutcome, variant = '
       path: '/contacts'
     },
     {
-      id: 'analyze',
+      id: 'analyze' as const,
       title: 'Network Insights',
       description: 'Discover patterns and opportunities in your network',
       icon: '/undraw_analyze.svg',
@@ -30,7 +31,7 @@ export default function OutcomeSelector({ onSelect, selectedOutcome, variant = '
 
   const insightOutcomes = [
     {
-      id: 'organize',
+      id: 'organize' as const,
       title: 'Organize Network',
       description: 'Create smart groups and categorize your contacts',
       icon: '/undraw_organize.svg',
@@ -38,7 +39,7 @@ export default function OutcomeSelector({ onSelect, selectedOutcome, variant = '
       benefit: 'Save time with AI-powered contact organization'
     },
     {
-      id: 'analyze',
+      id: 'analyze' as const,
       title: 'Analyze Patterns',
       description: 'Visualize your network growth and patterns',
       icon: '/undraw_analyze.svg',
@@ -54,13 +55,15 @@ export default function OutcomeSelector({ onSelect, selectedOutcome, variant = '
       {outcomes.map((outcome) => (
         <button
           key={outcome.id}
-          onClick={() => onSelect(outcome.id as any)}
+          onClick={() => onSelect(outcome.id)}
           className="group p-8 bg-white rounded-2xl transition-all hover:shadow-lg hover:scale-[1.02] text-left"
         >
           <div className="h-40 flex items-center justify-center mb-6">
-            <img
+            <Image
               src={outcome.icon}
               alt={outcome.title}
+              width={128}
+              height={128}
               className="w-32 h-32 group-hover:scale-105 transition-transform"
             />
           </div>

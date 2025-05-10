@@ -89,7 +89,8 @@ export const buttons = {
   danger: `bg-[${theme.colors.error.main}] text-white rounded-lg px-4 py-2 font-medium hover:bg-[${theme.colors.error.dark}] focus:outline-none focus:ring-2 focus:ring-[${theme.colors.error.main}]/50 disabled:opacity-50`,
 };
 
-export default {
+// Create a named styles object
+const styles = {
   typography,
   layout,
   spacing,
@@ -99,4 +100,6 @@ export default {
   transitions,
   shadows,
   buttons,
-}; 
+};
+
+export default styles; 

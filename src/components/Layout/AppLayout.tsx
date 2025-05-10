@@ -148,9 +148,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="flex min-h-screen bg-[#FAFAFA] overflow-x-hidden">
+      <div className="flex min-h-screen bg-[#FAFAFA]">
         <AppSidebar />
-        <main className="flex-1 p-6 overflow-x-auto">
+        <main className="flex-1 p-6 min-w-0">
           <div className="flex items-center mb-8">
             <SidebarTrigger 
               className="h-9 w-9 border border-sidebar-border rounded-md text-gray-500 hover:text-gray-900 hover:bg-sidebar-accent/50 transition-colors" 
@@ -159,9 +159,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
               {/* Page title would go here */}
             </h1>
           </div>
-          <div className="w-full max-w-full">
-            {children}
-          </div>
+          {children}
         </main>
       </div>
     </SidebarProvider>

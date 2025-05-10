@@ -17,6 +17,10 @@ export default function Auth() {
     signIn('google', { callbackUrl: '/contacts' });
   };
 
+  const handleMicrosoftSignIn = () => {
+    signIn('microsoft-entra-id', { callbackUrl: '/contacts' });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-[#F4F4FF] flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className={`max-w-5xl w-full transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
@@ -136,6 +140,22 @@ export default function Auth() {
                 </svg>
               </button>
 
+              <button 
+                onClick={handleMicrosoftSignIn}
+                className={`w-full flex items-center justify-center gap-3 px-8 py-3.5 bg-white rounded-xl hover:bg-[#1E1E3F]/5 border border-[#1E1E3F]/10 transition-all group relative shadow-sm hover:shadow-md ${isLoaded ? 'animate-subtle-pulse' : ''}`}
+              >
+                <Image src="/outlook-icon.svg" alt="Microsoft" width={24} height={24} />
+                <span className="text-[#1E1E3F] font-medium">Continue with Microsoft</span>
+                <svg 
+                  className="w-5 h-5 ml-2 text-[#1E1E3F]/40 group-hover:translate-x-1 transition-transform" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
               <div className="flex justify-center">
                 <button 
                   onClick={() => setIsModalOpen(true)}
@@ -155,16 +175,6 @@ export default function Auth() {
                 <div className="relative flex justify-center">
                   <span className="px-4 bg-white text-sm text-gray-400">More options coming soon</span>
                 </div>
-              </div>
-
-              <div className="opacity-40">
-                <button 
-                  disabled
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white rounded-xl border border-[#1E1E3F]/10 cursor-not-allowed shadow-sm"
-                >
-                  <Image src="/outlook-icon.svg" alt="Outlook" width={24} height={24} />
-                  <span className="text-[#1E1E3F] font-medium">Outlook</span>
-                </button>
               </div>
             </div>
 

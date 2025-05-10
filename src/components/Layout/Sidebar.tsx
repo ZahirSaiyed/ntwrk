@@ -104,14 +104,12 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, className }: Side
   return (
     <aside
       ref={sidebarRef}
-      style={{ 
-        width: 'var(--sidebar-width, 280px)',
-        transition: 'width var(--sidebar-transition-duration, 0.3s) var(--sidebar-transition-timing, cubic-bezier(0.4, 0, 0.2, 1))'
-      }}
       className={`
         fixed top-0 left-0 z-[100] h-screen
         bg-white border-r border-gray-200
         lg:relative lg:translate-x-0 overflow-hidden
+        ${isCollapsed ? 'w-20' : 'w-[280px]'}
+        transition-all duration-300 ease-in-out
         ${className}
       `}
     >

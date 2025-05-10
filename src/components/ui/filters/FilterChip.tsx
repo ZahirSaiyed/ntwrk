@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Icon, IconName } from '../icons/Icon';
-import { useTooltip } from '../TooltipProvider';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { X, Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,43 +60,10 @@ export const FilterChip: React.FC<FilterChipProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const chipRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { showTooltip, hideTooltip } = useTooltip();
-  const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Should we show the controls (edit/delete buttons)
   const showControls = (isHovered || isFocused) && !disabled && (!!onEdit || !!onDelete);
   
-  // Handle tooltip logic with improved delay
-  const handleMouseEnter = () => {
-    setIsHovered(true);
-    if (tooltipContent && chipRef.current && !isEditing) {
-      // Clear any existing timeout
-      if (tooltipTimerRef.current) {
-        clearTimeout(tooltipTimerRef.current);
-      }
-      
-      // Use a timeout to prevent showing tooltip on quick mouse movements
-      tooltipTimerRef.current = setTimeout(() => {
-        showTooltip(tooltipContent, chipRef.current!.getBoundingClientRect());
-      }, 300);
-    }
-  };
-  
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    
-    // Clear any pending show timeouts
-    if (tooltipTimerRef.current) {
-      clearTimeout(tooltipTimerRef.current);
-      tooltipTimerRef.current = null;
-    }
-    
-    // Hide tooltip immediately for snappiness
-    if (tooltipContent) {
-      hideTooltip();
-    }
-  };
-
   // Handle editing functionality
   const handleEdit = () => {
     if (onEdit && editMode === 'modal') {
@@ -107,7 +74,6 @@ export const FilterChip: React.FC<FilterChipProps> = ({
     
     // For inline editing
     setIsEditing(true);
-    hideTooltip(); // Hide tooltip when editing
   };
 
   const handleSave = () => {
@@ -130,15 +96,6 @@ export const FilterChip: React.FC<FilterChipProps> = ({
       onClick?.();
     }
   };
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      if (tooltipTimerRef.current) {
-        clearTimeout(tooltipTimerRef.current);
-      }
-    };
-  }, []);
 
   // Focus the input when editing starts
   useEffect(() => {
@@ -194,116 +151,106 @@ export const FilterChip: React.FC<FilterChipProps> = ({
     className
   );
 
-  return (
+  const chipContent = (
     <div
       ref={chipRef}
       className={chipBaseClass}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onClick={!isEditing ? onClick : undefined}
       onKeyDown={handleKeyDown}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       tabIndex={disabled ? -1 : 0}
-      role={onClick ? "button" : "generic"}
-      aria-pressed={onClick ? selected : undefined}
-      onClick={isEditing ? undefined : onClick}
-      aria-label={`Filter by ${label}${selected ? ' (selected)' : ''}`}
+      role="button"
+      aria-pressed={selected}
+      aria-disabled={disabled}
     >
+      {icon && (
+        <Icon
+          name={icon}
+          size={iconSizes[size]}
+          className={cn(
+            "mr-1.5",
+            selected ? "text-primary" : "text-muted-foreground"
+          )}
+        />
+      )}
+      
       {isEditing ? (
-        <div className="flex items-center gap-1 animate-in fade-in duration-200">
-          <Input
-            ref={inputRef}
-            type="text"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="h-6 w-24 rounded-sm border-none bg-transparent p-0 px-1 text-sm focus-visible:ring-1 focus-visible:ring-offset-0"
-            autoFocus
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 rounded-full p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-500 dark:hover:text-green-400 dark:hover:bg-gray-800"
-            onClick={handleSave}
-            aria-label="Save"
-          >
-            <Check className="h-3 w-3" />
-          </Button>
-        </div>
+        <Input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="h-6 px-1 py-0 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          onBlur={handleSave}
+        />
       ) : (
-        <>
-          {icon && (
-            <Icon 
-              name={icon} 
-              size={iconSizes[size]} 
-              className={cn("mr-1.5", selected ? "text-primary" : "text-muted-foreground")}
-            />
-          )}
-          
-          <span className={cn("transition-all duration-200", showControls ? "mr-1.5" : "mr-0")}>{label}</span>
-          
-          {selected && showSelectedIcon && !showControls && (
-            <Icon
-              name="Check"
-              size={iconSizes[size] - 2}
-              className="text-primary ml-1.5"
-            />
-          )}
-          
-          {badge !== undefined && (
-            <span 
-              className={cn(
-                "rounded-full px-2 py-0.5 text-xs ml-1.5 font-medium",
-                selected ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-              )}
+        <span className="font-medium">{label}</span>
+      )}
+      
+      {badge !== undefined && (
+        <span className={cn(
+          "ml-1.5 px-1.5 py-0.5 text-xs rounded-full",
+          selected ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+        )}>
+          {badge}
+        </span>
+      )}
+      
+      {selected && showSelectedIcon && (
+        <Icon
+          name="Check"
+          size={iconSizes[size]}
+          className="ml-1.5 text-primary"
+        />
+      )}
+      
+      {showControls && (
+        <div className="ml-1.5 flex items-center gap-0.5">
+          {onEdit && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 p-0 hover:bg-transparent"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit();
+              }}
             >
-              {badge}
-            </span>
+              <Pencil className="h-3 w-3" />
+            </Button>
           )}
-          
-          {/* Edit and Delete buttons that fade in on hover/focus */}
-          <div
-            className={cn(
-              "flex items-center gap-1 transition-all duration-200",
-              showControls ? "opacity-100 max-w-[80px] ml-1" : "opacity-0 max-w-0 ml-0 pointer-events-none"
-            )}
-          >
-            {onEdit && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 rounded-full p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEdit();
-                }}
-                aria-label="Edit filter"
-                tabIndex={showControls ? 0 : -1}
-              >
-                <Pencil className="h-3 w-3" />
-                <span className="sr-only">Edit</span>
-              </Button>
-            )}
-            
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 rounded-full p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                aria-label="Remove filter"
-                tabIndex={showControls ? 0 : -1}
-              >
-                <X className="h-3 w-3" />
-                <span className="sr-only">Remove</span>
-              </Button>
-            )}
-          </div>
-        </>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 p-0 hover:bg-transparent"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
+
+  if (tooltipContent && !isEditing) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {chipContent}
+        </TooltipTrigger>
+        <TooltipContent>
+          {tooltipContent}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return chipContent;
 };
 
 export default FilterChip; 

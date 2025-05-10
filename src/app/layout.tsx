@@ -1,31 +1,24 @@
-import { Inter } from 'next/font/google';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import Providers from "@/components/Providers";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import Providers from "./providers";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
-export const metadata = {
-  title: 'Node - Connect, Collaborate, Create',
-  description: 'A next-generation platform for professional networking and collaboration',
+export const metadata: Metadata = {
+  title: "Contact Network Manager",
+  description: "Manage your professional network contacts",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getServerSession(authOptions);
-
   return (
-    <html lang="en" className={inter.className}>
-      <body>
-        <Providers session={session}>
-          <div className="min-h-screen bg-[#FAFAFA]">
-            {children}
-          </div>
-        </Providers>
+    <html lang="en">
+      <body className={inter.className}>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

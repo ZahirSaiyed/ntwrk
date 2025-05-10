@@ -22,6 +22,7 @@ import { Icon } from '@/components/ui';
 import React from 'react';
 import DomainStats from '@/components/DomainStats';
 import { adaptContacts } from '@/utils/contactAdapter';
+import { Suspense } from 'react';
 
 // Add a custom useDebounce hook after the imports and before the component code
 function useDebounce<T>(value: T, delay: number): T {
@@ -185,7 +186,7 @@ function useGroupsPersistence(userEmail: string | null | undefined) {
   };
 }
 
-export default function ContactsPage() {
+function ContactsContent() {
   const router = useRouter();
   const { data: session } = useSession();
   const queryClient = useQueryClient();
@@ -340,7 +341,8 @@ export default function ContactsPage() {
         }, 500);
         // Set a flag to indicate data came from cache
         sessionStorage.setItem('sentRecipients_loaded_from_cache', 'true');
-        return adaptContacts(JSON.parse(cachedData));
+        const parsedData = JSON.parse(cachedData);
+        return adaptContacts(parsedData.contacts || []);
       }
 
       console.log('Fetching contacts from API');
@@ -355,7 +357,7 @@ export default function ContactsPage() {
       sessionStorage.setItem(sessionKey, JSON.stringify(data));
       // Set a flag to indicate data came from API
       sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
-      return adaptContacts(data);
+      return adaptContacts(data.contacts || []);
     },
     {
       enabled: !!session?.user?.email,
@@ -1023,450 +1025,464 @@ export default function ContactsPage() {
 
   return (
     <AppLayout>
-      <div className="p-4 md:p-8 space-y-6 md:space-y-8 max-w-full">
-        {/* Enhanced Header Section */}
-        <div className="bg-gradient-to-r from-[#F4F4FF] to-[#FAFAFA] rounded-3xl p-4 md:p-8 overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-[#1E1E3F] mb-2">Your Network</h1>
-              <p className="text-gray-600">Manage and organize your professional connections</p>
+      <div className="w-full">
+        <div className="space-y-6 md:space-y-8">
+          {/* Enhanced Header Section */}
+          <div className="bg-gradient-to-r from-[#F4F4FF] to-[#FAFAFA] rounded-3xl p-4 md:p-8 overflow-hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-[#1E1E3F] mb-2">Your Network</h1>
+                <p className="text-gray-600">Manage and organize your professional connections</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                <button
+                  onClick={refreshContacts}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
+                  title="Refresh contacts"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="hidden md:inline">Refresh</span>
+                </button>
+                {process.env.NODE_ENV === 'development' && (
+                  <button
+                    onClick={resetSessionOnly}
+                    className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-100 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
+                    title="Show cleanup assistant (testing only)"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span className="hidden md:inline">Test Cleanup</span>
+                  </button>
+                )}
+                {process.env.NODE_ENV === 'development' && (
+                  <button
+                    onClick={() => {
+                      // Clear all session data for testing
+                      sessionStorage.clear();
+                      
+                      // Set flags for the next load:
+                      // 1. Force show cleanup (for testing)
+                      sessionStorage.setItem('force_show_cleanup', 'true');
+                      // 2. Mark that we're not loading from cache
+                      sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
+                      
+                      toast.success('All session data cleared', {
+                        duration: 2000,
+                        style: { background: '#F4F4FF', color: '#1E1E3F' }
+                      });
+                      
+                      // Reload the page to simulate a fresh visit
+                      setTimeout(() => window.location.reload(), 500);
+                    }}
+                    className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl hover:bg-red-100 transition-all text-sm"
+                    title="Clear all session data (testing only)"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span className="hidden md:inline">Clear Session</span>
+                  </button>
+                )}
+                {process.env.NODE_ENV === 'development' && (
+                  <button
+                    onClick={() => {
+                      // Show all localStorage keys and values
+                      const storage: Record<string, unknown> = {};
+                      Object.keys(localStorage).forEach(key => {
+                        try {
+                          storage[key] = JSON.parse(localStorage.getItem(key) || '');
+                        } catch {
+                          storage[key] = localStorage.getItem(key);
+                        }
+                      });
+                      console.log('All localStorage items:', storage);
+                      
+                      toast.success('Storage data logged to console', {
+                        duration: 2000,
+                        style: { background: '#F4F4FF', color: '#1E1E3F' }
+                      });
+                    }}
+                    className="flex items-center gap-2 px-3 md:px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl hover:bg-blue-100 transition-all text-sm"
+                    title="Log storage data to console (testing only)"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className="hidden md:inline">Debug Storage</span>
+                  </button>
+                )}
+                {process.env.NODE_ENV === 'development' && (
+                  <button
+                    onClick={() => {
+                      // Clear groups data
+                      Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('contact-groups_')) {
+                          localStorage.removeItem(key);
+                        }
+                      });
+                      
+                      // Also clear the legacy groups data
+                      localStorage.removeItem('contact-groups');
+                      
+                      // Reset groups state using the hook's setGroups
+                      setGroups([]);
+                      
+                      toast.success('All groups data cleared', {
+                        duration: 2000,
+                        style: { background: '#F4F4FF', color: '#1E1E3F' }
+                      });
+                    }}
+                    className="flex items-center gap-2 px-3 md:px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl hover:bg-orange-100 transition-all text-sm"
+                    title="Clear all groups data (testing only)"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span className="hidden md:inline">Clear Groups</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowGroupModal(true)}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-[#1E1E3F] to-[#2D2D5F] text-white rounded-xl hover:opacity-90 transition-all text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className="hidden md:inline">Create Group</span>
+                </button>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  <span className="hidden md:inline">Import CSV</span>
+                </button>
+                <button
+                  onClick={() => setShowGroupExportModal(true)}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span className="hidden md:inline">{currentGroup ? 'Export Group' : 'Export'}</span>
+                </button>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 md:gap-3">
-              <button
-                onClick={refreshContacts}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
-                title="Refresh contacts"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span className="hidden md:inline">Refresh</span>
-              </button>
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={resetSessionOnly}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-100 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
-                  title="Show cleanup assistant (testing only)"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span className="hidden md:inline">Test Cleanup</span>
-                </button>
-              )}
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={() => {
-                    // Clear all session data for testing
-                    sessionStorage.clear();
-                    
-                    // Set flags for the next load:
-                    // 1. Force show cleanup (for testing)
-                    sessionStorage.setItem('force_show_cleanup', 'true');
-                    // 2. Mark that we're not loading from cache
-                    sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
-                    
-                    toast.success('All session data cleared', {
-                      duration: 2000,
-                      style: { background: '#F4F4FF', color: '#1E1E3F' }
-                    });
-                    
-                    // Reload the page to simulate a fresh visit
-                    setTimeout(() => window.location.reload(), 500);
-                  }}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl hover:bg-red-100 transition-all text-sm"
-                  title="Clear all session data (testing only)"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <span className="hidden md:inline">Clear Session</span>
-                </button>
-              )}
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={() => {
-                    // Show all localStorage keys and values
-                    const storage: Record<string, unknown> = {};
-                    Object.keys(localStorage).forEach(key => {
-                      try {
-                        storage[key] = JSON.parse(localStorage.getItem(key) || '');
-                      } catch {
-                        storage[key] = localStorage.getItem(key);
-                      }
-                    });
-                    console.log('All localStorage items:', storage);
-                    
-                    toast.success('Storage data logged to console', {
-                      duration: 2000,
-                      style: { background: '#F4F4FF', color: '#1E1E3F' }
-                    });
-                  }}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl hover:bg-blue-100 transition-all text-sm"
-                  title="Log storage data to console (testing only)"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <span className="hidden md:inline">Debug Storage</span>
-                </button>
-              )}
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={() => {
-                    // Clear groups data
-                    Object.keys(localStorage).forEach(key => {
-                      if (key.startsWith('contact-groups_')) {
-                        localStorage.removeItem(key);
-                      }
-                    });
-                    
-                    // Also clear the legacy groups data
-                    localStorage.removeItem('contact-groups');
-                    
-                    // Reset groups state using the hook's setGroups
-                    setGroups([]);
-                    
-                    toast.success('All groups data cleared', {
-                      duration: 2000,
-                      style: { background: '#F4F4FF', color: '#1E1E3F' }
-                    });
-                  }}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl hover:bg-orange-100 transition-all text-sm"
-                  title="Clear all groups data (testing only)"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <span className="hidden md:inline">Clear Groups</span>
-                </button>
-              )}
-              <button
-                onClick={() => setShowGroupModal(true)}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-[#1E1E3F] to-[#2D2D5F] text-white rounded-xl hover:opacity-90 transition-all text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span className="hidden md:inline">Create Group</span>
-              </button>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                <span className="hidden md:inline">Import CSV</span>
-              </button>
-              <button
-                onClick={() => setShowGroupExportModal(true)}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span className="hidden md:inline">{currentGroup ? 'Export Group' : 'Export'}</span>
-              </button>
+
+            {/* Filter section */}
+            <div className="mb-4 md:mb-6 overflow-x-auto pb-2 hide-scrollbar">
+              <div className="flex gap-2 md:gap-3 items-center">
+                {/* Debug logging 
+                  console.log('Rendering filters, current filter:', filter, 'loadedGroups:', loadedGroups, 'groups:', groups)
+                */}
+                {loadedGroups && [...quickFilters, ...groups.map(group => ({
+                  id: `group-${group.id}`, 
+                  label: group.name, 
+                  isGroup: true,
+                  groupData: group
+                } as GroupFilterItem))].map((filterItem: FilterItem) => {
+                  // Debug each filter item is commented out for production
+                  // console.log('Filter item:', filterItem.id, 'selected:', filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id);
+                  return (
+                    <div key={filterItem.id} className="relative group">
+                      <FilterChip
+                        label={filterItem.id.startsWith('group-') 
+                          ? filterItem.label 
+                          : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
+                        icon={filterItem.isGroup ? 'Users' as IconName : filterItem.icon}
+                        selected={filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id}
+                        onClick={() => handleFilterClick(filterItem.id)}
+                        badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
+                        tooltipContent={filterItem.isGroup 
+                          ? `Filter by ${filterItem.label} group contacts` 
+                          : filterItem.id === 'domain'
+                            ? 'Filter contacts by domain (e.g., gmail, amazon.com)'
+                            : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
+                        showSelectedIcon={true}
+                        onEdit={filterItem.isGroup ? 
+                          () => handleEditGroup(filterItem.groupData) : undefined}
+                        onDelete={filterItem.isGroup ? 
+                          () => handleDeleteGroup(filterItem.groupData.id) : undefined}
+                        editMode={filterItem.isGroup ? 'modal' : 'inline'}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Filter section */}
-          <div className="mb-4 md:mb-6 overflow-x-auto pb-2 hide-scrollbar">
-            <div className="flex gap-2 md:gap-3 items-center">
-              {/* Debug logging 
-                console.log('Rendering filters, current filter:', filter, 'loadedGroups:', loadedGroups, 'groups:', groups)
-              */}
-              {loadedGroups && [...quickFilters, ...groups.map(group => ({
-                id: `group-${group.id}`, 
-                label: group.name, 
-                isGroup: true,
-                groupData: group
-              } as GroupFilterItem))].map((filterItem: FilterItem) => {
-                // Debug each filter item is commented out for production
-                // console.log('Filter item:', filterItem.id, 'selected:', filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id);
-                return (
-                  <div key={filterItem.id} className="relative group">
-                    <FilterChip
-                      label={filterItem.id.startsWith('group-') 
-                        ? filterItem.label 
-                        : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1')}
-                      icon={filterItem.isGroup ? 'Users' as IconName : filterItem.icon}
-                      selected={filterItem.id === 'domain' ? isDomainFilterMode : filter === filterItem.id}
-                      onClick={() => handleFilterClick(filterItem.id)}
-                      badge={filterItem.isGroup ? filterItem.groupData?.members.length : undefined}
-                      tooltipContent={filterItem.isGroup 
-                        ? `Filter by ${filterItem.label} group contacts` 
-                        : filterItem.id === 'domain'
-                          ? 'Filter contacts by domain (e.g., gmail, amazon.com)'
-                          : `Show ${filterItem.id === 'all' ? 'all' : filterItem.id.charAt(0).toUpperCase() + filterItem.id.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase()} contacts`}
-                      showSelectedIcon={true}
-                      onEdit={filterItem.isGroup ? 
-                        () => handleEditGroup(filterItem.groupData) : undefined}
-                      onDelete={filterItem.isGroup ? 
-                        () => handleDeleteGroup(filterItem.groupData.id) : undefined}
-                      editMode={filterItem.isGroup ? 'modal' : 'inline'}
+          {/* Enhanced Search Bar */}
+          <div className="bg-white rounded-3xl shadow-sm mb-4">
+            <div className="p-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={inputSearch}
+                  onChange={(e) => setInputSearch(e.target.value)}
+                  placeholder={getSearchPlaceholder()}
+                  className={`w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent transition-all ${(isDomainFilterMode || (search && isDomainSearch(search))) ? 'border-[#4B4BA6] bg-[#F4F4FF]' : ''}`}
+                />
+                <svg 
+                  className="w-6 h-6 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                {search && isDomainSearch(search) && (
+                  <div className="absolute right-16 top-1/2 -translate-y-1/2 text-[#4B4BA6] bg-[#F4F4FF] px-2 py-0.5 rounded text-xs font-medium">
+                    Domain Search
+                  </div>
+                )}
+                {inputSearch && (
+                  <button
+                    onClick={() => {
+                      setInputSearch('');
+                      setSearch('');
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {(isDomainFilterMode || (search && isDomainSearch(search))) && (
+                <div className="mt-2 text-xs flex items-start">
+                  <svg className="w-4 h-4 mr-1 text-[#4B4BA6] shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 16V12M12 8H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" 
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <div className="text-gray-600">
+                    <p className="font-medium text-[#4B4BA6]">Smart Domain Search</p>
+                    <p>
+                      {search ? (
+                        <>Showing contacts with <span className="font-semibold">{search}</span> and related domains like <span className="font-semibold">{search.includes('.') ? search : `${search}.com`}</span></>
+                      ) : (
+                        <>Type a company or domain name (e.g., <span className="font-medium">amazon</span>, <span className="font-medium">gmail</span>) to filter your contacts</>
+                      )}
+                    </p>
+                    {search && !search.includes('@') && !search.includes(' ') && (
+                      <p className="mt-1 text-gray-500">
+                        Note: Partial matches like "{search}" will match "{search}.com", "{search}.org", etc.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Domain Stats Section - Only show when domain filter mode is active */}
+          {isDomainFilterMode && (
+            <div className="mb-4">
+              <DomainStats 
+                contacts={displayContacts}
+                extractDomain={extractDomain}
+                selectedDomain={selectedDomain}
+                onDomainSelect={handleDomainSelect}
+              />
+            </div>
+          )}
+
+          {/* Enhanced Table Section */}
+          <div className="bg-white rounded-3xl shadow-sm">
+            <div className="p-4 flex justify-between border-b border-gray-100">
+              <div className="flex items-center">
+                <span className="text-sm font-medium text-gray-700">Your Network</span>
+                <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
+                  {filteredContacts.length} contacts
+                </span>
+                {isDomainFilterMode && search && isDomainSearch(search) && domainGroupedContacts && (
+                  <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
+                    {domainGroupedContacts.length} domains
+                  </span>
+                )}
+              </div>
+              <ColumnCustomizer
+                availableColumns={availableColumnsList}
+                activeColumns={activeColumns}
+                onColumnChange={(columns) => setActiveColumns(columns as ColumnKey[])}
+                onAddColumn={handleAddColumn}
+                onEditColumn={(key, newLabel) => {
+                  // Also update availableColumnsList to show the new label in the UI
+                  setAvailableColumnsList(prev => prev.map(col => 
+                    col.key === key ? { ...col, label: newLabel } : col
+                  ));
+                }}
+              />
+            </div>
+
+            {isDomainFilterMode && search && isDomainSearch(search) && domainGroupedContacts ? (
+              // Domain-grouped view
+              <div className="divide-y divide-gray-100">
+                {domainGroupedContacts.map(([domain, domainContacts]) => (
+                  <div key={domain} className="py-2">
+                    <div className="px-4 py-2 bg-gray-50 flex items-center">
+                      <svg className="w-4 h-4 mr-2 text-[#4B4BA6]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M3.6 9h16.8M3.6 15h16.8M12 3a4.5 4.5 0 000 18 4.5 4.5 0 000-18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <span className="font-medium text-sm text-[#1E1E3F]">{domain}</span>
+                      <span className="ml-2 text-xs text-gray-500">({domainContacts.length} contacts)</span>
+                    </div>
+                    <ContactTable 
+                      contacts={domainContacts}
+                      onContactClick={setSelectedContact}
+                      onContactUpdate={handleContactUpdate}
+                      currentPage={1}
+                      itemsPerPage={domainContacts.length}
+                      columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
+                      className="divide-y divide-gray-100"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                      showToast={showToast}
+                      totalContacts={domainContacts.length}
+                      onPageChange={() => {}}
+                      onPageSizeChange={() => {}}
+                      hideHeader={true}
                     />
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Enhanced Search Bar */}
-        <div className="bg-white rounded-3xl shadow-sm mb-4">
-          <div className="p-4">
-            <div className="relative">
-              <input
-                type="text"
-                value={inputSearch}
-                onChange={(e) => setInputSearch(e.target.value)}
-                placeholder={getSearchPlaceholder()}
-                className={`w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E1E3F] focus:border-transparent transition-all ${(isDomainFilterMode || (search && isDomainSearch(search))) ? 'border-[#4B4BA6] bg-[#F4F4FF]' : ''}`}
-              />
-              <svg 
-                className="w-6 h-6 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              {search && isDomainSearch(search) && (
-                <div className="absolute right-16 top-1/2 -translate-y-1/2 text-[#4B4BA6] bg-[#F4F4FF] px-2 py-0.5 rounded text-xs font-medium">
-                  Domain Search
-                </div>
-              )}
-              {inputSearch && (
-                <button
-                  onClick={() => {
-                    setInputSearch('');
-                    setSearch('');
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {(isDomainFilterMode || (search && isDomainSearch(search))) && (
-              <div className="mt-2 text-xs flex items-start">
-                <svg className="w-4 h-4 mr-1 text-[#4B4BA6] shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 16V12M12 8H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" 
-                        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                <div className="text-gray-600">
-                  <p className="font-medium text-[#4B4BA6]">Smart Domain Search</p>
-                  <p>
-                    {search ? (
-                      <>Showing contacts with <span className="font-semibold">{search}</span> and related domains like <span className="font-semibold">{search.includes('.') ? search : `${search}.com`}</span></>
-                    ) : (
-                      <>Type a company or domain name (e.g., <span className="font-medium">amazon</span>, <span className="font-medium">gmail</span>) to filter your contacts</>
-                    )}
-                  </p>
-                  {search && !search.includes('@') && !search.includes(' ') && (
-                    <p className="mt-1 text-gray-500">
-                      Note: Partial matches like "{search}" will match "{search}.com", "{search}.org", etc.
-                    </p>
-                  )}
-                </div>
+                ))}
               </div>
+            ) : (
+              // Standard view
+              <ContactTable 
+                contacts={filteredContacts}
+                onContactClick={setSelectedContact}
+                onContactUpdate={handleContactUpdate}
+                currentPage={currentPage}
+                itemsPerPage={itemsPerPage}
+                columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
+                className="divide-y divide-gray-100"
+                sortConfig={sortConfig}
+                onSort={handleSort}
+                showToast={showToast}
+                totalContacts={filteredContacts.length}
+                onPageChange={(page) => setCurrentPage(page)}
+                onPageSizeChange={(size) => setItemsPerPage(size)}
+              />
             )}
           </div>
         </div>
 
-        {/* Domain Stats Section - Only show when domain filter mode is active */}
-        {isDomainFilterMode && (
-          <div className="mb-4">
-            <DomainStats 
-              contacts={displayContacts}
-              extractDomain={extractDomain}
-              selectedDomain={selectedDomain}
-              onDomainSelect={handleDomainSelect}
-            />
-          </div>
+        {selectedContact && (
+          <ContactDetail
+            contact={selectedContact}
+            onClose={() => setSelectedContact(null)}
+            onSave={(contact) => updateContactMutation.mutate(contact)}
+            onAddColumn={handleAddColumn}
+          />
         )}
 
-        {/* Enhanced Table Section */}
-        <div className="bg-white rounded-3xl shadow-sm">
-          <div className="p-4 flex justify-between border-b border-gray-100">
-            <div className="flex items-center">
-              <span className="text-sm font-medium text-gray-700">Your Network</span>
-              <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
-                {filteredContacts.length} contacts
-              </span>
-              {isDomainFilterMode && search && isDomainSearch(search) && domainGroupedContacts && (
-                <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-[#F4F4FF] text-[#1E1E3F]">
-                  {domainGroupedContacts.length} domains
-                </span>
-              )}
-            </div>
-            <ColumnCustomizer
-              availableColumns={availableColumnsList}
-              activeColumns={activeColumns}
-              onColumnChange={(columns) => setActiveColumns(columns as ColumnKey[])}
-              onAddColumn={handleAddColumn}
-              onEditColumn={(key, newLabel) => {
-                // Also update availableColumnsList to show the new label in the UI
-                setAvailableColumnsList(prev => prev.map(col => 
-                  col.key === key ? { ...col, label: newLabel } : col
-                ));
-              }}
-            />
-          </div>
-
-          {isDomainFilterMode && search && isDomainSearch(search) && domainGroupedContacts ? (
-            // Domain-grouped view
-            <div className="divide-y divide-gray-100">
-              {domainGroupedContacts.map(([domain, domainContacts]) => (
-                <div key={domain} className="py-2">
-                  <div className="px-4 py-2 bg-gray-50 flex items-center">
-                    <svg className="w-4 h-4 mr-2 text-[#4B4BA6]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M3.6 9h16.8M3.6 15h16.8M12 3a4.5 4.5 0 000 18 4.5 4.5 0 000-18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span className="font-medium text-sm text-[#1E1E3F]">{domain}</span>
-                    <span className="ml-2 text-xs text-gray-500">({domainContacts.length} contacts)</span>
-                  </div>
-                  <ContactTable 
-                    contacts={domainContacts}
-                    onContactClick={setSelectedContact}
-                    onContactUpdate={handleContactUpdate}
-                    currentPage={1}
-                    itemsPerPage={domainContacts.length}
-                    columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
-                    className="divide-y divide-gray-100"
-                    sortConfig={sortConfig}
-                    onSort={handleSort}
-                    showToast={showToast}
-                    totalContacts={domainContacts.length}
-                    onPageChange={() => {}}
-                    onPageSizeChange={() => {}}
-                    hideHeader={true}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            // Standard view
-            <ContactTable 
-              contacts={filteredContacts}
-              onContactClick={setSelectedContact}
-              onContactUpdate={handleContactUpdate}
-              currentPage={currentPage}
-              itemsPerPage={itemsPerPage}
-              columns={availableColumnsList.filter(col => activeColumns.includes(col.key))}
-              className="divide-y divide-gray-100"
-              sortConfig={sortConfig}
-              onSort={handleSort}
-              showToast={showToast}
-              totalContacts={filteredContacts.length}
-              onPageChange={(page) => setCurrentPage(page)}
-              onPageSizeChange={(size) => setItemsPerPage(size)}
-            />
-          )}
-        </div>
-      </div>
-
-      {selectedContact && (
-        <ContactDetail
-          contact={selectedContact}
-          onClose={() => setSelectedContact(null)}
-          onSave={(contact) => updateContactMutation.mutate(contact)}
-          onAddColumn={handleAddColumn}
-        />
-      )}
-
-      {/* Group Modal */}
-      <GroupModal
-        isOpen={showGroupModal}
-        onClose={() => {
-          setShowGroupModal(false);
-          setEditingGroup(null);
-        }}
-        contacts={contacts}
-        onGroupCreate={handleGroupSave}
-        editingGroup={editingGroup || undefined}
-      />
-
-      {/* Onboarding Prompt */}
-      {showOnboarding && (
-        <OnboardingPrompt 
-          onStartCleanup={handleStartCleanup} 
-          onSkip={handleSkipOnboarding} 
-        />
-      )}
-
-      {/* Inbox Cleanup Assistant */}
-      {showCleanupAssistant && (
-        <InboxCleanupAssistant 
-          contacts={contacts}
-          onMarkAsSpam={(emails) => {
-            const updatedContacts = contacts.map((contact: Contact) => ({
-              ...contact,
-              isSpam: emails.includes(contact.email)
-            } as ContactWithSpam));
-            queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
-            
-            // Update sessionStorage with the new data
-            const sessionKey = getContactsSessionKey(session?.user?.email);
-            sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
-          }}
-          onUndo={(email) => {
-            const updatedContacts = contacts.map((contact: Contact) => ({
-              ...contact,
-              isSpam: (contact as ContactWithSpam).isSpam === undefined ? false : 
-                     email === contact.email ? false : (contact as ContactWithSpam).isSpam
-            } as ContactWithSpam));
-            queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
-            
-            // Update sessionStorage with the new data
-            const sessionKey = getContactsSessionKey(session?.user?.email);
-            sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
-          }}
-          onExcludeFromAnalytics={(exclude) => {
-            // Update analytics settings in user preferences
-            fetch('/api/user/preferences', {
-              method: 'PATCH',
-              body: JSON.stringify({ excludeFromAnalytics: exclude })
-            });
-          }}
+        {/* Group Modal */}
+        <GroupModal
+          isOpen={showGroupModal}
           onClose={() => {
-            // Set flag that we just closed the assistant to prevent it from immediately showing again
-            sessionStorage.setItem('cleanup_just_closed', 'true');
-            
-            // After a short delay, remove the "just closed" flag to allow normal behavior later
-            setTimeout(() => {
-              sessionStorage.removeItem('cleanup_just_closed');
-            }, 5000); // 5 seconds is enough to prevent double-showing
-            
-            setShowCleanupAssistant(false);
+            setShowGroupModal(false);
+            setEditingGroup(null);
           }}
+          contacts={contacts}
+          onGroupCreate={handleGroupSave}
+          editingGroup={editingGroup || undefined}
         />
-      )}
 
-      {/* Group Export Modal */}
-      <GroupExportModal
-        isOpen={showGroupExportModal}
-        onClose={() => setShowGroupExportModal(false)}
-        groupName={currentGroup?.name || 'All Contacts'}
-        contacts={currentGroup 
-          ? contacts.filter((contact: Contact) => currentGroup.members.includes(contact.email))
-          : filteredContacts
-        }
-      />
+        {/* Onboarding Prompt */}
+        {showOnboarding && (
+          <OnboardingPrompt 
+            onStartCleanup={handleStartCleanup} 
+            onSkip={handleSkipOnboarding} 
+          />
+        )}
 
-      <ImportModal
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        onImportComplete={handleImportComplete}
-      />
+        {/* Inbox Cleanup Assistant */}
+        {showCleanupAssistant && (
+          <InboxCleanupAssistant 
+            contacts={contacts}
+            onMarkAsSpam={(emails) => {
+              const updatedContacts = contacts.map((contact: Contact) => ({
+                ...contact,
+                isSpam: emails.includes(contact.email)
+              } as ContactWithSpam));
+              queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
+              
+              // Update sessionStorage with the new data
+              const sessionKey = getContactsSessionKey(session?.user?.email);
+              sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
+            }}
+            onUndo={(email) => {
+              const updatedContacts = contacts.map((contact: Contact) => ({
+                ...contact,
+                isSpam: (contact as ContactWithSpam).isSpam === undefined ? false : 
+                       email === contact.email ? false : (contact as ContactWithSpam).isSpam
+              } as ContactWithSpam));
+              queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
+              
+              // Update sessionStorage with the new data
+              const sessionKey = getContactsSessionKey(session?.user?.email);
+              sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
+            }}
+            onExcludeFromAnalytics={(exclude) => {
+              // Update analytics settings in user preferences
+              fetch('/api/user/preferences', {
+                method: 'PATCH',
+                body: JSON.stringify({ excludeFromAnalytics: exclude })
+              });
+            }}
+            onClose={() => {
+              // Set flag that we just closed the assistant to prevent it from immediately showing again
+              sessionStorage.setItem('cleanup_just_closed', 'true');
+              
+              // After a short delay, remove the "just closed" flag to allow normal behavior later
+              setTimeout(() => {
+                sessionStorage.removeItem('cleanup_just_closed');
+              }, 5000); // 5 seconds is enough to prevent double-showing
+              
+              setShowCleanupAssistant(false);
+            }}
+          />
+        )}
+
+        {/* Group Export Modal */}
+        <GroupExportModal
+          isOpen={showGroupExportModal}
+          onClose={() => setShowGroupExportModal(false)}
+          groupName={currentGroup?.name || 'All Contacts'}
+          contacts={currentGroup 
+            ? contacts.filter((contact: Contact) => currentGroup.members.includes(contact.email))
+            : filteredContacts
+          }
+        />
+
+        <ImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImportComplete={handleImportComplete}
+        />
+      </div>
     </AppLayout>
+  );
+}
+
+export default function ContactsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-pulse">Loading contacts...</div>
+      </div>
+    }>
+      <ContactsContent />
+    </Suspense>
   );
 }

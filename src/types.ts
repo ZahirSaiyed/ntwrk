@@ -2,6 +2,7 @@ export interface Contact {
   name: string;
   email: string;
   lastContacted: string;
+  lastContactedRaw?: string; // For sorting
   company?: string;
   relationshipStrength?: {
     score: number;
@@ -27,6 +28,7 @@ export interface Contact {
   customFields?: CustomField[];
   tags?: string[];
   notes?: string;
+  provider?: 'google' | 'microsoft-entra-id';
 }
 
 export type Group = {
