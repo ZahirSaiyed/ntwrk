@@ -1,13 +1,22 @@
+import { Contact } from '@/types';
+import { adaptContact } from './contactAdapter';
+
 interface Interaction {
     date: string;
     type: 'sent' | 'received';
     threadId?: string;
   }
   
-  export function analyzeInteractions(interactions: Interaction[]) {
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  export function analyzeInteractions(contact: Contact) {
+    // Adapt contact to ensure it has proper interactions structure
+    const adaptedContact = adaptContact(contact);
+    const interactions = adaptedContact.interactions || [];
+    
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
     return {
       last30Days: interactions.filter(i => new Date(i.date) > thirtyDaysAgo).length,
@@ -18,11 +27,13 @@ interface Interaction {
   }
   
   function calculateResponseRate(interactions: Interaction[]): number {
-    // Implementation details for response rate calculation
-    return 0;
+    if (interactions.length === 0) return 0;
+    
+    const sent = interactions.filter(i => i.type === 'sent').length;
+    return sent / interactions.length;
   }
   
   function calculateAverageResponseTime(interactions: Interaction[]): number {
-    // Implementation details for response time calculation
-    return 0;
+    // Simple implementation for now
+    return 24; // Hours
   }

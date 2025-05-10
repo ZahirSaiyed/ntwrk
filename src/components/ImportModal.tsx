@@ -47,9 +47,9 @@ const DATA_SOURCES: DataSource[] = [
       name: ['full name', 'name', 'first name', 'last name'],
       email: ['email', 'email address'],
       company: ['company', 'organization'],
-      lastContacted: ['last contacted', 'last contact date']
+      lastContacted: ['last emailed', 'last email date']
     },
-    sampleData: `full name,email,company,last contacted
+    sampleData: `full name,email,company,last emailed
 John Doe,john@example.com,Acme Inc,2024-03-20
 Jane Smith,jane@example.com,Tech Corp,2024-03-19`
   },
@@ -180,7 +180,7 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
   };
 
   const downloadTemplate = () => {
-    const template = 'name,email,company,lastContacted\nJohn Doe,john@example.com,Acme Inc,2024-03-20\nJane Smith,jane@example.com,Tech Corp,2024-03-19\n';
+    const template = 'name,email,company,last emailed\nJohn Doe,john@example.com,Acme Inc,2024-03-20\nJane Smith,jane@example.com,Tech Corp,2024-03-19\n';
     const blob = new Blob([template], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -190,6 +190,14 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  };
+
+  // Match field names from CSV to our expected fields (case-insensitive)
+  const fieldMappings = {
+    name: ['name', 'full name', 'contact name', 'fullname', 'username', 'full_name'],
+    email: ['email', 'email address', 'mail', 'contact email', 'email_address'],
+    company: ['company', 'organization', 'company name', 'business', 'employer', 'workplace'],
+    lastContacted: ['last emailed', 'last email date', 'last contacted', 'last contact date']
   };
 
   const mapHeadersToContact = (headers: string[], values: string[]): Partial<Contact> => {
@@ -762,7 +770,7 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
       { key: 'name', label: 'Name' },
       { key: 'email', label: 'Email' },
       { key: 'company', label: 'Company' },
-      { key: 'lastContacted', label: 'Last Contact' }
+      { key: 'lastContacted', label: 'Last Emailed' }
     ];
   };
 

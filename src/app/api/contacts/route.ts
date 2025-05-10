@@ -34,46 +34,44 @@ export async function GET(): Promise<NextResponse> {
       }, { status: 401 });
     }
 
-    // Get recent emails
+    // Get only sent emails - reduce maxResults from 500 to 100 for better performance
     const messagesResponse = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 500,
-      q: 'in:sent OR in:inbox'
+      maxResults: 100,
+      q: 'in:sent'
     });
 
     if (!messagesResponse.data.messages) {
       return NextResponse.json([]);
     }
 
-    const emailAddresses = new Set<string>();
     const contactData = new Map<string, {
       name: string;
       email: string;
-      lastContacted: string;
-      interactions: Array<{
-        date: string;
-        type: 'sent' | 'received';
-        threadId?: string;
-        participants?: string[];
-      }>;
+      lastSent: string;
+      sentDates: string[];
     }>();
 
     // Process messages in batches to avoid rate limits
     const batchSize = 50;
+    const batches = [];
+
     for (let i = 0; i < messagesResponse.data.messages.length; i += batchSize) {
-      const batch = messagesResponse.data.messages.slice(i, i + batchSize);
-      
+      batches.push(messagesResponse.data.messages.slice(i, i + batchSize));
+    }
+
+    // Process up to 3 batches concurrently instead of serially
+    const processBatch = async (batch: typeof messagesResponse.data.messages) => {
       await Promise.all(batch.map(async (message) => {
         try {
           const messageDetails = await gmail.users.messages.get({
             userId: 'me',
             id: message.id || '',
             format: 'metadata',
-            metadataHeaders: ['From', 'To', 'Cc', 'Bcc', 'Date', 'References', 'In-Reply-To', 'Message-ID']
+            metadataHeaders: ['To', 'Cc', 'Bcc', 'Date']
           });
 
           const headers = messageDetails.data.payload?.headers as MessageHeader[];
-          const fromHeader = headers?.find((h: MessageHeader) => h.name === 'From')?.value;
           const toHeader = headers?.find((h: MessageHeader) => h.name === 'To')?.value;
           const ccHeader = headers?.find((h: MessageHeader) => h.name === 'Cc')?.value;
           const bccHeader = headers?.find((h: MessageHeader) => h.name === 'Bcc')?.value;
@@ -87,7 +85,7 @@ export async function GET(): Promise<NextResponse> {
             if (standardMatch) {
               const [_, name, email] = standardMatch;
               return {
-                email: email,
+                email: email.toLowerCase(),
                 name: name?.replace(/"/g, '').trim() || email.split('@')[0]
               };
             }
@@ -95,7 +93,7 @@ export async function GET(): Promise<NextResponse> {
             // If no standard format, just extract the email
             const emailMatch = header.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
             if (emailMatch) {
-              const email = emailMatch[1];
+              const email = emailMatch[1].toLowerCase();
               return {
                 email: email,
                 name: email.split('@')[0]
@@ -105,30 +103,7 @@ export async function GET(): Promise<NextResponse> {
             return { email: '', name: '' };
           };
 
-          const fromEmails = extractEmailAndName(fromHeader);
           const date = dateHeader ? new Date(dateHeader).toISOString() : new Date().toISOString();
-
-          if (fromEmails.email && fromEmails.email !== session.user!.email) {
-            emailAddresses.add(fromEmails.email);
-            const existing = contactData.get(fromEmails.email.toLowerCase()) || {
-              name: fromEmails.name || fromEmails.email,
-              email: fromEmails.email.toLowerCase(),
-              lastContacted: date,
-              interactions: []
-            };
-
-            existing.interactions.push({
-              date,
-              type: 'received',
-              threadId: message.threadId || undefined
-            });
-
-            if (new Date(existing.lastContacted) < new Date(date)) {
-              existing.lastContacted = date;
-            }
-
-            contactData.set(fromEmails.email.toLowerCase(), existing);
-          }
 
           const processRecipients = (header: string | undefined | null) => {
             if (!header) return [];
@@ -140,79 +115,46 @@ export async function GET(): Promise<NextResponse> {
           const bccRecipients = processRecipients(bccHeader);
 
           // Process all recipients
-          const allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients]
-            .map(r => r.email)
-            .filter((email): email is string => {
-              if (!email || !session.user?.email) return false;
-              // Skip if recipient is the same as sender (case-insensitive)
-              return email.toLowerCase() !== session.user.email.toLowerCase();
-            });
-
-          if (allRecipients.length > 0 && session.user?.email) {
-            // Store the sent message in the sender's contact record
-            const senderEmail = session.user.email;
-            const senderContact = contactData.get(senderEmail.toLowerCase()) || {
-              name: session.user.name || senderEmail,
-              email: senderEmail.toLowerCase(),
-              lastContacted: date,
-              interactions: []
-            };
-
-            // Only store if we're actually sending to someone else
-            if (allRecipients.some(r => r.toLowerCase() !== senderEmail.toLowerCase())) {
-              senderContact.interactions.push({
-                date,
-                type: 'sent',
-                threadId: message.threadId || undefined,
-                participants: allRecipients
-              });
-
-              if (new Date(senderContact.lastContacted) < new Date(date)) {
-                senderContact.lastContacted = date;
-              }
-
-              contactData.set(senderEmail.toLowerCase(), senderContact);
-            }
-          }
-
-          // Also store the interaction for each recipient
           [...toRecipients, ...ccRecipients, ...bccRecipients].forEach(recipient => {
             if (recipient.email && 
                 session.user?.email && 
                 recipient.email.toLowerCase() !== session.user.email.toLowerCase()) {
-              emailAddresses.add(recipient.email);
-              const existing = contactData.get(recipient.email.toLowerCase()) || {
+              
+              const existing = contactData.get(recipient.email) || {
                 name: recipient.name || recipient.email,
-                email: recipient.email.toLowerCase(),
-                lastContacted: date,
-                interactions: []
+                email: recipient.email,
+                lastSent: date,
+                sentDates: []
               };
 
-              existing.interactions.push({
-                date,
-                type: 'received',
-                threadId: message.threadId || undefined,
-                participants: [session.user.email]
-              });
+              existing.sentDates.push(date);
 
-              if (new Date(existing.lastContacted) < new Date(date)) {
-                existing.lastContacted = date;
+              // Update lastSent if this email is more recent
+              if (new Date(existing.lastSent) < new Date(date)) {
+                existing.lastSent = date;
               }
 
-              contactData.set(recipient.email.toLowerCase(), existing);
+              contactData.set(recipient.email, existing);
             }
           });
         } catch (error) {
           console.error('Error processing message:', message.id, error);
         }
       }));
+    };
+
+    // Process batches concurrently with a maximum of 3 at a time
+    for (let i = 0; i < batches.length; i += 3) {
+      const batchesToProcess = batches.slice(i, i + 3);
+      await Promise.all(batchesToProcess.map(processBatch));
     }
 
+    // Convert the Map to an array of contacts
     const contacts = Array.from(contactData.values()).map(contact => ({
       email: contact.email,
       name: contact.name,
-      lastContacted: contact.lastContacted,
-      interactions: contact.interactions
+      lastContacted: contact.lastSent, // Keep the field name as lastContacted for backward compatibility
+      sentDates: contact.sentDates
     }));
 
     return NextResponse.json(contacts);

@@ -27,7 +27,7 @@ export default function ActionCenter({ contacts, onActionComplete }: ActionCente
     // Priority 1: Declining Relationships
     contacts.forEach(contact => {
       const velocity = calculateVelocityScore(contact);
-      if (velocity?.trend === 'falling' && velocity.score < 40) {
+      if (velocity.trend === 'falling' && velocity.score < 40) {
         actions.push({
           id: `reconnect-${contact.email}`,
           type: 'reconnect',
@@ -41,17 +41,19 @@ export default function ActionCenter({ contacts, onActionComplete }: ActionCente
 
     // Priority 2: Strategic Follow-ups
     contacts.forEach(contact => {
-      const lastInteraction = contact.interactions[contact.interactions.length - 1];
-      if (lastInteraction?.type === 'sent' && 
-          new Date(lastInteraction.date).getTime() > now.getTime() - 7 * 24 * 60 * 60 * 1000) {
-        actions.push({
-          id: `followup-${contact.email}`,
-          type: 'followup',
-          priority: 'medium',
-          contact,
-          description: `Follow up on recent conversation with ${contact.name}`,
-          suggestedMessage: `Thanks for your message last week. I wanted to follow up on...`
-        });
+      if (contact.interactions && contact.interactions.length > 0) {
+        const lastInteraction = contact.interactions[contact.interactions.length - 1];
+        if (lastInteraction?.type === 'sent' && 
+            new Date(lastInteraction.date).getTime() > now.getTime() - 7 * 24 * 60 * 60 * 1000) {
+          actions.push({
+            id: `followup-${contact.email}`,
+            type: 'followup',
+            priority: 'medium',
+            contact,
+            description: `Follow up on recent conversation with ${contact.name}`,
+            suggestedMessage: `Thanks for your message last week. I wanted to follow up on...`
+          });
+        }
       }
     });
 

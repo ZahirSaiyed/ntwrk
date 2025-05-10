@@ -2,7 +2,7 @@ import * as d3 from 'd3';
 import { Contact } from '@/types';
 
 export function calculateNodeSize(contact: Contact): number {
-  const interactionCount = contact.interactions.length;
+  const interactionCount = contact.interactions?.length || 0;
   return Math.max(5, Math.min(15, 5 + Math.sqrt(interactionCount)));
 }
 
@@ -39,6 +39,8 @@ export function generateNetworkLinks(contacts: Contact[]): any[] {
 
   // Add links based on interaction patterns
   contacts.forEach(contact => {
+    if (!contact.interactions) return;
+    
     const recentInteractions = contact.interactions
       .filter(i => new Date(i.date) > new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
     

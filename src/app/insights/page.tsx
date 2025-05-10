@@ -3,28 +3,57 @@
 import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NetworkScore from '@/components/insights/NetworkScore';
 import TimeframeSelector from '@/components/insights/TimeframeSelector';
 import RelationshipTimeline from '@/components/insights/RelationshipTimeline';
 import SmartInsights from '@/components/insights/SmartInsights';
+import { adaptContacts } from '@/utils/contactAdapter';
+
+// Add useDebounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 export default function InsightsPage() {
   const { data: session } = useSession();
   const [selectedTimeframe, setSelectedTimeframe] = useState<'30d' | '90d' | '1y'>('30d');
   const [currentView, setCurrentView] = useState<'organize' | 'analyze'>('analyze');
+  
+  // Add search state with debouncing if there's a search input in this page
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 200);
+  const [search, setSearch] = useState('');
+  
+  // Update search when debounced value changes
+  useEffect(() => {
+    setSearch(debouncedSearch);
+  }, [debouncedSearch]);
 
   const { data: contacts = [], isLoading } = useQuery(
-    ['contacts', session?.user?.email],
+    ['sentRecipients', session?.user?.email],
     async () => {
       const response = await fetch('/api/contacts');
       if (!response.ok) throw new Error('Failed to fetch contacts');
-      return response.json();
+      const data = await response.json();
+      return adaptContacts(data);
     },
     {
       enabled: !!session?.user?.email,
-      staleTime: 5 * 60 * 1000,
-      cacheTime: 30 * 60 * 1000,
+      staleTime: 6 * 60 * 60 * 1000, // 6 hours stale time
+      cacheTime: 8 * 60 * 60 * 1000, // 8 hours cache time
     }
   );
 

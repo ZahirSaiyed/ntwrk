@@ -79,9 +79,9 @@ export default function SmartInsights({ contacts, onGroupCreate }: SmartInsights
     contacts.forEach(contact => {
       // Calculate total interactions in last 30 days
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const recentInteractions = contact.interactions.filter(i => 
+      const recentInteractions = contact.interactions?.filter(i => 
         new Date(i.date) > thirtyDaysAgo
-      ).length;
+      )?.length || 0;
 
       // Categorize based on monthly interaction rate
       if (recentInteractions >= 12) { // 3+ per week = daily
@@ -118,6 +118,11 @@ export default function SmartInsights({ contacts, onGroupCreate }: SmartInsights
     };
 
     contacts.forEach(contact => {
+      // Skip if no interactions
+      if (!contact.interactions || contact.interactions.length === 0) {
+        return;
+      }
+      
       // Check for promotional patterns
       const isLikelyPromotional = 
         // All messages are received (never sent by us)
