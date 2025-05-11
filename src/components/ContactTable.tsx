@@ -127,99 +127,44 @@ function ProTipBadge({ visible, onDismiss }: { visible: boolean; onDismiss: () =
 }
 
 // ShortcutsGuide component aligned with design system
-function ShortcutsGuide({ visible, isKeyboardActive }: { visible: boolean, isKeyboardActive: boolean }) {
+function ShortcutsGuide({ visible, isKeyboardActive }: { visible: boolean; isKeyboardActive: boolean }) {
   if (!visible) return null;
-  
+
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
-          transition={{ 
-            type: "spring", 
-            stiffness: 400, 
-            damping: 30 
-          }}
-          className="fixed bottom-4 right-4 max-w-sm bg-[#1E1E3F] shadow-lg rounded-lg overflow-hidden z-50"
-        >
-          <div className="px-4 py-3 bg-[#1E1E3F] text-white flex justify-between items-center border-b border-white/10">
-            <h3 className="text-sm font-medium">Keyboard shortcuts</h3>
-            <button
-              onClick={() => {
-                // Close logic (should be passed as prop)
-                const event = new CustomEvent('toggleShortcutsGuide', { detail: { visible: false } });
-                document.dispatchEvent(event);
-              }}
-              className="text-white/70 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors duration-200"
-              aria-label="Close shortcuts guide"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
-          
-          <div className="px-4 py-3 bg-[#1E1E3F] text-white space-y-3">
-            {/* Primary shortcuts - always visible */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>Select row</span>
-                <div className="flex items-center gap-1">
-                  <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">Click</kbd>
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Edit cell</span>
-                <div className="flex items-center gap-1">
-                  <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">Double-click</kbd>
-                </div>
-              </div>
-            </div>
-            
-            {/* Navigation shortcuts - only visible when keyboard is active */}
-            <AnimatePresence>
-              {isKeyboardActive && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="pt-2 border-t border-white/10 space-y-2"
-                >
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Navigate rows</span>
-                    <div className="flex items-center gap-1">
-                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">↑</kbd>
-                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">↓</kbd>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Navigate pages</span>
-                    <div className="flex items-center gap-1">
-                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">PgUp</kbd>
-                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">PgDn</kbd>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>First/Last page</span>
-                    <div className="flex items-center gap-1">
-                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">Home</kbd>
-                      <kbd className="px-2 py-1 bg-[#1E1E3F]/80 border border-white/20 rounded text-xs">End</kbd>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          
-          <div className="px-4 py-2 bg-[#1E1E3F]/90 border-t border-white/10 flex justify-between items-center">
-            <span className="text-xs text-white/70">Press any key to see more shortcuts</span>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg border border-gray-100 p-4 z-50"
+    >
+      <h3 className="text-sm font-medium text-gray-900 mb-2">Keyboard Shortcuts</h3>
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">⌘/Ctrl + C</kbd>
+          <span>Copy selected cells</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">⌘/Ctrl + V</kbd>
+          <span>Paste to selected cells</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">⌘/Ctrl + E</kbd>
+          <span>Copy email (when focused)</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Shift + Space</kbd>
+          <span>Select row</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">⌘/Ctrl + Z</kbd>
+          <span>Undo</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">⌘/Ctrl + Y</kbd>
+          <span>Redo</span>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -311,6 +256,17 @@ export default function ContactTable({
   useHotkeys('ctrl+z', () => undo(), { enableOnFormTags: true });
   useHotkeys('ctrl+y', () => redo(), { enableOnFormTags: true });
   useHotkeys('shift+space', () => handleSelectRow(), { enableOnFormTags: true });
+  
+  // Add email copy shortcut
+  useHotkeys('ctrl+e', () => {
+    if (focusedCell) {
+      const contact = paginatedContacts.find(c => c.email === focusedCell.contactId);
+      if (contact && focusedCell.field === 'email') {
+        navigator.clipboard.writeText(contact.email);
+        showToast('Email copied to clipboard', 'success');
+      }
+    }
+  }, { enableOnFormTags: true });
 
   const [showKeyboardTip, setShowKeyboardTip] = useState(() => {
     return !localStorage.getItem('hasSeenTableKeyboardTip');
@@ -653,10 +609,73 @@ export default function ContactTable({
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedContacts = contacts.slice(startIndex, startIndex + itemsPerPage);
 
+  const [copiedColumn, setCopiedColumn] = useState<string | null>(null);
+  const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
+
+  const handleBulkCopy = (columnKey: string) => {
+    const values = paginatedContacts.map(contact => {
+      if (columnKey === 'lastContacted') {
+        return formatDate(contact.lastContacted);
+      }
+      return contact[columnKey as keyof Contact] || '';
+    }).join(', ');
+    
+    navigator.clipboard.writeText(values);
+    setCopiedColumn(columnKey);
+    showToast(`All ${columnKey} values copied to clipboard`, 'success');
+    
+    // Reset the copied state after animation
+    setTimeout(() => {
+      setCopiedColumn(null);
+    }, 2000);
+  };
+
+  const handleEmailCopy = (email: string, contactId: string) => {
+    navigator.clipboard.writeText(email);
+    setCopiedEmailId(contactId);
+    showToast('Email copied to clipboard', 'success');
+    
+    // Reset the copied state after animation
+    setTimeout(() => {
+      setCopiedEmailId(null);
+    }, 2000);
+  };
+
   const renderCell = (contact: Contact, column: Column) => {
     if (column.key === 'lastContacted') {
       return formatDate(contact.lastContacted);
     }
+    
+    // Special handling for email cells
+    if (column.key === 'email') {
+      const isCopied = copiedEmailId === contact.email;
+      return (
+        <div className="group/email relative flex items-center">
+          <span className={isCopied ? 'text-[#1E1E3F] font-medium' : ''}>{column.render(contact)}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEmailCopy(contact.email, contact.email);
+            }}
+            className="absolute right-0 opacity-0 group-hover/email:opacity-100 transition-opacity duration-200
+              p-1.5 rounded-md hover:bg-[#F4F4FF] active:bg-[#E4E4FF]
+              focus:outline-none focus:ring-2 focus:ring-[#1E1E3F]/20"
+            aria-label="Copy email"
+          >
+            {isCopied ? (
+              <svg className="w-4 h-4 text-[#1E1E3F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
+      );
+    }
+    
     return column.render(contact);
   };
 
@@ -727,6 +746,13 @@ export default function ContactTable({
     setIsKeyboardActive(false);
   };
 
+  // Add bulk copy handler
+  const handleBulkCopyEmails = () => {
+    const emails = paginatedContacts.map(contact => contact.email).join(', ');
+    navigator.clipboard.writeText(emails);
+    showToast('All emails copied to clipboard', 'success');
+  };
+
   return (
     <div className="relative" onClick={handleMouseInteraction}>
       <div 
@@ -777,6 +803,32 @@ export default function ContactTable({
                   >
                     <div className="flex items-center gap-2">
                       {column.label}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBulkCopy(column.key);
+                        }}
+                        className={`
+                          ml-2 p-1.5 rounded-md 
+                          transition-all duration-200
+                          focus:outline-none focus:ring-2 focus:ring-[#1E1E3F]/20
+                          ${copiedColumn === column.key 
+                            ? 'bg-[#1E1E3F]/10 text-[#1E1E3F]' 
+                            : 'opacity-0 group-hover:opacity-100 hover:bg-[#E4E4FF] active:bg-[#D4D4FF] text-gray-500'
+                          }
+                        `}
+                        aria-label={`Copy all ${column.label.toLowerCase()}`}
+                      >
+                        {copiedColumn === column.key ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </button>
                       <span className="text-[#1E1E3F]">
                         {sortConfig.key === column.key ? (
                           sortConfig.direction === 'asc' ? '↑' : '↓'
@@ -844,7 +896,7 @@ export default function ContactTable({
                       </motion.div>
                     ) : (
                       <div className="group/cell relative">
-                        <span>{column.render(contact)}</span>
+                        {renderCell(contact, column)}
                       </div>
                     )}
                   </td>
