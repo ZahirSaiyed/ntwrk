@@ -4,6 +4,7 @@ import { GmailClient } from "@/lib/gmail-client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { Contact } from "@/types";
+import { enrichBatchViaAI } from "@/utils/enrichBatchViaAI";
 
 export async function GET() {
   try {
@@ -58,9 +59,17 @@ export async function GET() {
       
       return transformed;
     });
-    
+
+    // Enrich contacts with AI
+    const enrichedContacts = await enrichBatchViaAI(transformedContacts, {
+      delayMs: 200, // 200ms delay between API calls
+      maxRetries: 2, // Retry failed enrichments twice
+      cacheByDomain: true, // Cache results by domain to avoid duplicate API calls
+      userEmail: session.user.email // Add user email for persistent caching
+    });
+
     // Set cache control headers for stale-while-revalidate caching strategy
-    const response = NextResponse.json({ contacts: transformedContacts });
+    const response = NextResponse.json({ contacts: enrichedContacts });
     response.headers.set(
       'Cache-Control', 
       'public, s-maxage=600, stale-while-revalidate=300'

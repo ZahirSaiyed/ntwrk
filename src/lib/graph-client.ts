@@ -16,6 +16,7 @@ interface EmailMessage {
 }
 
 export interface Contact {
+  id: string;
   name: string;
   email: string;
   lastContacted: string;
@@ -100,6 +101,7 @@ export class GraphClient {
           const isoDate = sentDate.toISOString();
           
           contactMap.set(emailAddress, {
+            id: emailAddress,
             name,
             email: emailAddress,
             lastContactedRaw: email.sentDateTime,

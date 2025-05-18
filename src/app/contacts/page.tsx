@@ -41,14 +41,28 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Helper function to get the consistent session storage key
-const getContactsSessionKey = (userEmail: string | null | undefined) => {
-  return `sentRecipients_${userEmail || 'unknown'}`;
+// Helper function to get the consistent storage key
+const getContactsStorageKey = (userEmail: string | null | undefined): string => {
+  if (!userEmail) {
+    throw new Error('User email is required for storage key');
+  }
+  return `contacts_${userEmail}`;
+};
+
+// Helper function to get user-specific enrichment cache key
+const getEnrichmentCacheKey = (userEmail: string | null | undefined): string => {
+  if (!userEmail) {
+    throw new Error('User email is required for enrichment cache key');
+  }
+  return `enrichment-cache_${userEmail}`;
 };
 
 // Helper function to get user-specific group storage key
-const getGroupsStorageKey = (userEmail: string | null | undefined) => {
-  return `contact-groups_${userEmail || 'unknown'}`;
+const getGroupsStorageKey = (userEmail: string | null | undefined): string => {
+  if (!userEmail) {
+    throw new Error('User email is required for group storage key');
+  }
+  return `contact-groups_${userEmail}`;
 };
 
 type FilterType = 'all' | `group-${string}`;
@@ -186,6 +200,12 @@ function useGroupsPersistence(userEmail: string | null | undefined) {
   };
 }
 
+// Add this type near the top with other types
+type ContactsData = {
+  contacts: Contact[];
+  lastUpdated: string;
+};
+
 function ContactsContent() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -290,6 +310,7 @@ function ContactsContent() {
     'name',
     'email',
     'company',
+    'industry',
     'lastContacted'
   ]);
   const [availableColumnsList, setAvailableColumnsList] = useState<Column[]>([]);
@@ -304,45 +325,70 @@ function ContactsContent() {
   // Add state for selected domain in domain stats
   const [selectedDomain, setSelectedDomain] = useState<string | undefined>(undefined);
 
-  // Clear session cache if the user changes
+  // Clear storage if the user changes
   useEffect(() => {
     if (!session?.user?.email) {
-      // User logged out or session expired
-      // Clear session cache
-      Object.keys(sessionStorage).forEach(key => {
-        if (key.startsWith('sentRecipients_')) {
-          sessionStorage.removeItem(key);
-        }
-      });
-      
-      // Reset the groups state to empty since there's no logged-in user
+      // User logged out - don't clear localStorage, just reset the state
       setGroups([]);
+    } else {
+      // When user changes, ensure we're using the correct data for the current user
+      const currentUserEmail = session.user.email;
+      
+      // Force a refresh of the data
+      queryClient.invalidateQueries({ 
+        queryKey: ['sentRecipients', currentUserEmail],
+        refetchType: 'active'
+      });
     }
-  }, [session?.user?.email, setGroups]);
+  }, [session?.user?.email, setGroups, queryClient]);
 
 
 
-  const { data: contacts = [], isLoading, error } = useQuery<Contact[]>(
+  const { data: contactsData = { contacts: [], lastUpdated: new Date().toISOString() }, isLoading, error } = useQuery<ContactsData>(
     ['sentRecipients', session?.user?.email],
     async () => {
-      // Check if we have cached data in sessionStorage
-      const sessionKey = getContactsSessionKey(session?.user?.email);
-      const cachedData = sessionStorage.getItem(sessionKey);
+      // Ensure we have a valid session
+      if (!session?.user?.email) {
+        throw new Error('No active session');
+      }
+
+      // Check if we have cached data in localStorage
+      const storageKey = getContactsStorageKey(session.user.email);
+      if (!storageKey) {
+        throw new Error('Invalid storage key');
+      }
+
+      const cachedData = localStorage.getItem(storageKey);
       
       if (cachedData) {
-        console.log('Loading contacts from session cache');
-        // Show a non-intrusive toast notification
-        setTimeout(() => {
-          toast.success('Contacts loaded from cache', {
-            duration: 2000,
-            position: 'bottom-right',
-            style: { backgroundColor: '#F4F4FF', color: '#1E1E3F' }
-          });
-        }, 500);
-        // Set a flag to indicate data came from cache
-        sessionStorage.setItem('sentRecipients_loaded_from_cache', 'true');
-        const parsedData = JSON.parse(cachedData);
-        return adaptContacts(parsedData.contacts || []);
+        try {
+          const parsedData = JSON.parse(cachedData);
+          // Validate that the cached data belongs to the current user
+          if (parsedData.userEmail !== session.user.email) {
+            // If the cached data belongs to a different user, clear it
+            localStorage.removeItem(storageKey);
+            throw new Error('Invalid cached data');
+          }
+
+          console.log('Loading contacts from cache');
+          // Show a non-intrusive toast notification
+          setTimeout(() => {
+            toast.success('Contacts loaded from cache', {
+              duration: 2000,
+              position: 'bottom-right',
+              style: { backgroundColor: '#F4F4FF', color: '#1E1E3F' }
+            });
+          }, 500);
+
+          return {
+            contacts: adaptContacts(parsedData.contacts || []),
+            lastUpdated: parsedData.lastUpdated || new Date().toISOString()
+          };
+        } catch (error) {
+          // If there's any error parsing the cache, clear it
+          localStorage.removeItem(storageKey);
+          console.error('Error parsing cached data:', error);
+        }
       }
 
       console.log('Fetching contacts from API');
@@ -353,20 +399,53 @@ function ContactsContent() {
       }
       
       const data = await response.json();
-      // Cache the data in sessionStorage for next time
-      sessionStorage.setItem(sessionKey, JSON.stringify(data));
-      // Set a flag to indicate data came from API
-      sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
-      return adaptContacts(data.contacts || []);
+      const now = new Date().toISOString();
+      
+      // Cache the data in localStorage with user email for validation
+      localStorage.setItem(storageKey, JSON.stringify({
+        ...data,
+        lastUpdated: now,
+        userEmail: session.user.email // Add user email to cached data for validation
+      }));
+      
+      return {
+        contacts: adaptContacts(data.contacts || []),
+        lastUpdated: now
+      };
     },
     {
       enabled: !!session?.user?.email,
-      // Set the stale time to 6 hours instead of infinity
-      staleTime: 6 * 60 * 60 * 1000, // 6 hours in milliseconds
-      // Set the cache time to 8 hours
-      cacheTime: 8 * 60 * 60 * 1000 // 8 hours in milliseconds
+      staleTime: 30 * 60 * 1000, // 30 minutes
+      cacheTime: 15 * 60 * 1000, // 15 minutes
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false
     }
   );
+
+  // Extract contacts from the data object
+  const contacts = contactsData.contacts;
+
+  // Update the force refresh function
+  const forceRefresh = useCallback(() => {
+    if (!session?.user?.email) return;
+    
+    // Only clear the current user's cache
+    const storageKey = getContactsStorageKey(session.user.email);
+    localStorage.removeItem(storageKey);
+    
+    // Invalidate and refetch
+    queryClient.invalidateQueries({ 
+      queryKey: ['sentRecipients', session.user.email],
+      refetchType: 'active'
+    });
+    
+    toast.success('Refreshing contacts from server...', {
+      duration: 2000,
+      position: 'bottom-right',
+      style: { backgroundColor: '#F4F4FF', color: '#1E1E3F' }
+    });
+  }, [queryClient, session?.user?.email]);
 
   // Check if cleanup assistant has been shown before - this needs to run AFTER contacts are loaded
   useEffect(() => {
@@ -376,7 +455,7 @@ function ContactsContent() {
     
     // First check if assistant was just manually closed in this session
     // This is a strong signal that we should not show it again immediately
-    const justClosed = sessionStorage.getItem('cleanup_just_closed') === 'true';
+    const justClosed = localStorage.getItem('cleanup_just_closed') === 'true';
     if (justClosed) {
       console.log("Cleanup assistant was just closed, not showing again");
       setShowCleanupAssistant(false);
@@ -384,23 +463,23 @@ function ContactsContent() {
     }
     
     // Check if we should force show the cleanup assistant (after Clear Session or explicit refresh)
-    const forceShow = sessionStorage.getItem('force_show_cleanup') === 'true';
+    const forceShow = localStorage.getItem('force_show_cleanup') === 'true';
     if (forceShow) {
       // Clear the force show flag
-      sessionStorage.removeItem('force_show_cleanup');
+      localStorage.removeItem('force_show_cleanup');
       console.log("Force showing cleanup assistant after session clear or refresh");
       setShowCleanupAssistant(true);
       return;
     }
     
     // Check if data was loaded from cache
-    const loadedFromCache = sessionStorage.getItem('sentRecipients_loaded_from_cache') === 'true';
+    const loadedFromCache = localStorage.getItem('sentRecipients_loaded_from_cache') === 'true';
     
-    // Get the session key for this user's cleanup assistant state
+    // Get the storage key for this user's cleanup assistant state
     const sessionKey = `cleanup-shown-in-session-${session.user.email}`;
     
     // Check if we've already shown the assistant in this session
-    const shownInCurrentSession = sessionStorage.getItem(sessionKey) === 'true';
+    const shownInCurrentSession = localStorage.getItem(sessionKey) === 'true';
     
     console.log("Cleanup assistant shown in session:", shownInCurrentSession, "Data loaded from cache:", loadedFromCache);
     
@@ -411,7 +490,7 @@ function ContactsContent() {
       console.log("Showing cleanup assistant (fresh API data)");
       setShowCleanupAssistant(true);
       // Mark that we've shown it in this session
-      sessionStorage.setItem(sessionKey, 'true');
+      localStorage.setItem(sessionKey, 'true');
     } else {
       console.log("Not showing cleanup assistant");
       setShowCleanupAssistant(false);
@@ -420,17 +499,25 @@ function ContactsContent() {
 
   // Function to invalidate cache and refresh data
   const refreshContacts = useCallback(() => {
-    const sessionKey = getContactsSessionKey(session?.user?.email);
-    sessionStorage.removeItem(sessionKey);
+    const storageKey = getContactsStorageKey(session?.user?.email);
+    const cachedData = localStorage.getItem(storageKey);
     
-    // Set sentRecipients_loaded_from_cache to false since we're forcing a refresh
-    sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
-    
-    // Set force_show_cleanup to true since this is an explicit refresh
-    sessionStorage.setItem('force_show_cleanup', 'true');
-    sessionStorage.removeItem('cleanup_just_closed'); // Clear this flag
-    
-    queryClient.invalidateQueries({ queryKey: ['sentRecipients', session?.user?.email] });
+    if (cachedData) {
+      // If we have cached data, just revalidate the query
+      queryClient.invalidateQueries({ 
+        queryKey: ['sentRecipients', session?.user?.email],
+        refetchType: 'none' // Don't trigger a refetch
+      });
+      toast.success('Contacts refreshed from cache', {
+        duration: 2000,
+        position: 'bottom-right',
+        style: { backgroundColor: '#F4F4FF', color: '#1E1E3F' }
+      });
+    } else {
+      // Only if we don't have cached data, force a refresh
+      localStorage.setItem('sentRecipients_loaded_from_cache', 'false');
+      queryClient.invalidateQueries({ queryKey: ['sentRecipients', session?.user?.email] });
+    }
   }, [queryClient, session?.user?.email]);
 
 
@@ -439,10 +526,10 @@ function ContactsContent() {
   const resetSessionOnly = useCallback(() => {
     if (session?.user?.email) {
       // Set consistent flags for testing
-      sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
-      sessionStorage.setItem('force_show_cleanup', 'true');
-      sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
-      sessionStorage.removeItem('cleanup_just_closed'); // Make sure we clear this
+      localStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
+      localStorage.setItem('force_show_cleanup', 'true');
+      localStorage.setItem('sentRecipients_loaded_from_cache', 'false');
+      localStorage.removeItem('cleanup_just_closed'); // Make sure we clear this
       
       // Show cleanup assistant immediately
       setShowCleanupAssistant(true);
@@ -471,6 +558,18 @@ function ContactsContent() {
       label: 'Email',
       description: 'Primary email address',
       render: (contact: Contact) => contact.email
+    },
+    {
+      key: 'company' as ColumnKey,
+      label: 'Company',
+      description: 'Organization or company name',
+      render: (contact: Contact) => contact.company || '-'
+    },
+    {
+      key: 'industry' as ColumnKey,
+      label: 'Industry',
+      description: 'Industry or sector',
+      render: (contact: Contact) => contact.industry || '-'
     },
     {
       key: 'lastContacted' as ColumnKey,
@@ -502,12 +601,6 @@ function ContactsContent() {
           return '-';
         }
       }
-    },
-    {
-      key: 'company' as ColumnKey,
-      label: 'Company',
-      description: 'Current organization',
-      render: (contact: Contact) => contact.company || '-'
     },
     ...(contacts[0]?.customFields?.map((field: CustomField) => ({
       key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
@@ -782,9 +875,13 @@ function ContactsContent() {
         );
         console.log('Updated contacts:', newData);
         
-        // Update sessionStorage with the new data
-        const sessionKey = getContactsSessionKey(session?.user?.email);
-        sessionStorage.setItem(sessionKey, JSON.stringify(newData));
+        // Update localStorage with the new data
+        const storageKey = getContactsStorageKey(session?.user?.email);
+        localStorage.setItem(storageKey, JSON.stringify({
+          contacts: newData,
+          lastUpdated: new Date().toISOString(),
+          userEmail: session?.user?.email
+        }));
         
         return newData;
       });
@@ -808,14 +905,18 @@ function ContactsContent() {
       
       const updatedContacts = [...nonSpamContacts, ...uniqueNewContacts];
       
-      // Update sessionStorage with the new data
-      const sessionKey = getContactsSessionKey(session?.user?.email);
-      sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
+      // Update localStorage with the new data
+      const storageKey = getContactsStorageKey(session?.user?.email);
+      localStorage.setItem(storageKey, JSON.stringify({
+        contacts: updatedContacts,
+        lastUpdated: new Date().toISOString(),
+        userEmail: session?.user?.email
+      }));
       
       // Always show cleanup assistant after import if there are new contacts
       if (uniqueNewContacts.length > 0) {
         // Clear the "just closed" flag if it exists
-        sessionStorage.removeItem('cleanup_just_closed');
+        localStorage.removeItem('cleanup_just_closed');
         
         // Directly show cleanup assistant without relying on the useEffect
         setShowCleanupAssistant(true);
@@ -824,9 +925,9 @@ function ContactsContent() {
         // but only if new contacts were added
         if (session?.user?.email) {
           // Set flags for consistent behavior
-          sessionStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
-          sessionStorage.setItem('force_show_cleanup', 'true');
-          sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
+          localStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
+          localStorage.setItem('force_show_cleanup', 'true');
+          localStorage.setItem('sentRecipients_loaded_from_cache', 'false');
         }
         
         toast.success(`Imported ${uniqueNewContacts.length} new contacts`, {
@@ -994,7 +1095,7 @@ function ContactsContent() {
 
   const handleStartCleanup = () => {
     setShowOnboarding(false);
-    sessionStorage.removeItem('cleanup_just_closed'); // Clear this flag
+    localStorage.removeItem('cleanup_just_closed'); // Clear this flag
     setShowCleanupAssistant(true);
   };
 
@@ -1058,17 +1159,30 @@ function ContactsContent() {
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold text-[#1E1E3F] mb-2">Your Network</h1>
                 <p className="text-gray-600">Manage and organize your professional connections</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Last updated: {new Date(contactsData.lastUpdated).toLocaleString()}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 <button
                   onClick={refreshContacts}
                   className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all text-sm"
-                  title="Refresh contacts"
+                  title="Refresh from cache"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   <span className="hidden md:inline">Refresh</span>
+                </button>
+                <button
+                  onClick={forceRefresh}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-[#1E1E3F] text-white rounded-xl hover:bg-[#2D2D5F] transition-all text-sm"
+                  title="Force refresh from server"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="hidden md:inline">Force Refresh</span>
                 </button>
                 {process.env.NODE_ENV === 'development' && (
                   <button
@@ -1085,16 +1199,22 @@ function ContactsContent() {
                 {process.env.NODE_ENV === 'development' && (
                   <button
                     onClick={() => {
-                      // Clear all session data for testing
-                      sessionStorage.clear();
+                      // Clear all localStorage data for testing
+                      Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('contacts_') || 
+                            key.startsWith('enrichment-cache_') || 
+                            key.startsWith('contact-groups_')) {
+                          localStorage.removeItem(key);
+                        }
+                      });
                       
                       // Set flags for the next load:
                       // 1. Force show cleanup (for testing)
-                      sessionStorage.setItem('force_show_cleanup', 'true');
+                      localStorage.setItem('force_show_cleanup', 'true');
                       // 2. Mark that we're not loading from cache
-                      sessionStorage.setItem('sentRecipients_loaded_from_cache', 'false');
+                      localStorage.setItem('sentRecipients_loaded_from_cache', 'false');
                       
-                      toast.success('All session data cleared', {
+                      toast.success('All data cleared', {
                         duration: 2000,
                         style: { background: '#F4F4FF', color: '#1E1E3F' }
                       });
@@ -1103,12 +1223,12 @@ function ContactsContent() {
                       setTimeout(() => window.location.reload(), 500);
                     }}
                     className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl hover:bg-red-100 transition-all text-sm"
-                    title="Clear all session data (testing only)"
+                    title="Clear all data (testing only)"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    <span className="hidden md:inline">Clear Session</span>
+                    <span className="hidden md:inline">Clear Data</span>
                   </button>
                 )}
                 {process.env.NODE_ENV === 'development' && (
@@ -1442,9 +1562,9 @@ function ContactsContent() {
               } as ContactWithSpam));
               queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
               
-              // Update sessionStorage with the new data
-              const sessionKey = getContactsSessionKey(session?.user?.email);
-              sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
+              // Update localStorage with the new data
+              const storageKey = getContactsStorageKey(session?.user?.email);
+              localStorage.setItem(storageKey, JSON.stringify(updatedContacts));
             }}
             onUndo={(email) => {
               const updatedContacts = contacts.map((contact: Contact) => ({
@@ -1454,9 +1574,9 @@ function ContactsContent() {
               } as ContactWithSpam));
               queryClient.setQueryData(['sentRecipients', session?.user?.email], updatedContacts);
               
-              // Update sessionStorage with the new data
-              const sessionKey = getContactsSessionKey(session?.user?.email);
-              sessionStorage.setItem(sessionKey, JSON.stringify(updatedContacts));
+              // Update localStorage with the new data
+              const storageKey = getContactsStorageKey(session?.user?.email);
+              localStorage.setItem(storageKey, JSON.stringify(updatedContacts));
             }}
             onExcludeFromAnalytics={(exclude) => {
               // Update analytics settings in user preferences
@@ -1467,11 +1587,11 @@ function ContactsContent() {
             }}
             onClose={() => {
               // Set flag that we just closed the assistant to prevent it from immediately showing again
-              sessionStorage.setItem('cleanup_just_closed', 'true');
+              localStorage.setItem('cleanup_just_closed', 'true');
               
               // After a short delay, remove the "just closed" flag to allow normal behavior later
               setTimeout(() => {
-                sessionStorage.removeItem('cleanup_just_closed');
+                localStorage.removeItem('cleanup_just_closed');
               }, 5000); // 5 seconds is enough to prevent double-showing
               
               setShowCleanupAssistant(false);

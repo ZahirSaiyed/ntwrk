@@ -1,9 +1,11 @@
 export interface Contact {
+  id: string;
   name: string;
   email: string;
   lastContacted: string;
   lastContactedRaw?: string; // For sorting
   company?: string;
+  industry?: string;
   relationshipStrength?: {
     score: number;
     trend: 'rising' | 'stable' | 'falling';
@@ -29,6 +31,7 @@ export interface Contact {
   tags?: string[];
   notes?: string;
   provider?: 'google' | 'microsoft-entra-id';
+  enrichedBy?: 'ai';
 }
 
 export type Group = {
