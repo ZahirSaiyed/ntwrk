@@ -24,6 +24,11 @@ export interface Contact {
 
 export class GmailClient {
   private oauth2Client: any;
+  private cache: {
+    sentEmails?: EmailMessage[];
+    lastFetch?: number;
+  } = {};
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   
   constructor(accessToken: string) {
     this.oauth2Client = new google.auth.OAuth2(
@@ -61,8 +66,19 @@ export class GmailClient {
       }
     };
   }
+
+  private isValidDate(dateStr: string): boolean {
+    const date = new Date(dateStr);
+    return date instanceof Date && !isNaN(date.getTime());
+  }
   
   async getSentEmails(limit: number = 100): Promise<EmailMessage[]> {
+    // Check cache first
+    const now = Date.now();
+    if (this.cache.sentEmails && this.cache.lastFetch && (now - this.cache.lastFetch < this.CACHE_DURATION)) {
+      return this.cache.sentEmails;
+    }
+
     try {
       const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
       const response = await gmail.users.messages.list({
@@ -84,12 +100,18 @@ export class GmailClient {
           const getHeader = (name: string) => 
             headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
 
+          const dateStr = getHeader('Date');
+          if (!this.isValidDate(dateStr)) {
+            console.warn(`Invalid date format for message ${message.id}: ${dateStr}`);
+            return null;
+          }
+
           const to = getHeader('To').split(',').map(email => this.parseEmailAddress(email));
           const cc = getHeader('Cc').split(',').map(email => this.parseEmailAddress(email));
           const bcc = getHeader('Bcc').split(',').map(email => this.parseEmailAddress(email));
 
           return {
-            sentDateTime: getHeader('Date'),
+            sentDateTime: dateStr,
             toRecipients: to,
             ccRecipients: cc,
             bccRecipients: bcc
@@ -97,7 +119,12 @@ export class GmailClient {
         })
       );
 
-      return messages;
+      // Filter out null messages and update cache
+      const validMessages = messages.filter((msg): msg is EmailMessage => msg !== null);
+      this.cache.sentEmails = validMessages;
+      this.cache.lastFetch = now;
+
+      return validMessages;
     } catch (error) {
       console.error('Error fetching sent emails:', error);
       throw error;
@@ -115,17 +142,27 @@ export class GmailClient {
         if (!emailAddress) return; // Skip invalid email addresses
         const name = recipient.emailAddress.name || emailAddress;
         const sentDate = new Date(email.sentDateTime);
+        
+        // Skip if date is invalid
+        if (!this.isValidDate(email.sentDateTime)) {
+          console.warn(`Invalid date for email to ${emailAddress}: ${email.sentDateTime}`);
+          return;
+        }
+
         // If this contact doesn't exist in our map, or if this email is more recent
         // than the one we have stored, update the contact info
         if (
           !contactMap.has(emailAddress) || 
           new Date(contactMap.get(emailAddress)!.lastContactedRaw) < sentDate
         ) {
+          // Convert the date to ISO format for consistent handling
+          const isoDate = sentDate.toISOString();
+          
           contactMap.set(emailAddress, {
             name,
             email: emailAddress,
             lastContactedRaw: email.sentDateTime,
-            lastContacted: format(sentDate, 'MMM d, yyyy, h:mm a')
+            lastContacted: isoDate // Store in ISO format
           });
         }
       };

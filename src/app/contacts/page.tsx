@@ -4,7 +4,7 @@ import AppLayout from '@/components/Layout/AppLayout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import GroupModal from "@/components/GroupModal";
 import { Contact } from '@/types';
 import ContactTable from "@/components/ContactTable";
@@ -476,7 +476,32 @@ function ContactsContent() {
       key: 'lastContacted' as ColumnKey,
       label: 'Last Emailed',
       description: 'Most recent email sent',
-      render: (contact: Contact) => format(new Date(contact.lastContacted), 'MMM d, yyyy')
+      render: (contact: Contact) => {
+        if (!contact.lastContacted) return '-';
+        try {
+          // Parse the date string which is in RFC 2822 format
+          const dateStr = contact.lastContacted;
+          // Handle different date formats
+          let date: Date;
+          if (dateStr.includes(',')) {
+            // RFC 2822 format (e.g., "Thu, 1 May 2025 10:16:18 +0000")
+            date = new Date(dateStr);
+          } else {
+            // ISO format
+            date = new Date(dateStr);
+          }
+          
+          if (!isValid(date)) {
+            console.warn('Invalid date for contact:', contact.email, dateStr);
+            return '-';
+          }
+          
+          return format(date, 'MMM d, yyyy');
+        } catch (error) {
+          console.error('Error formatting date for contact:', contact.email, error);
+          return '-';
+        }
+      }
     },
     {
       key: 'company' as ColumnKey,

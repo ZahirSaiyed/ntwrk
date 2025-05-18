@@ -22,13 +22,6 @@ const microsoftClientId = process.env.MICROSOFT_CLIENT_ID;
 const microsoftClientSecret = process.env.MICROSOFT_CLIENT_SECRET;
 const nextAuthSecret = process.env.NEXTAUTH_SECRET;
 
-console.log("Environment variables check:");
-console.log(`GOOGLE_CLIENT_ID exists: ${!!googleClientId}`);
-console.log(`GOOGLE_CLIENT_SECRET exists: ${!!googleClientSecret}`);
-console.log(`MICROSOFT_CLIENT_ID exists: ${!!microsoftClientId}`);
-console.log(`MICROSOFT_CLIENT_SECRET exists: ${!!microsoftClientSecret}`);
-console.log(`NEXTAUTH_SECRET exists: ${!!nextAuthSecret}`);
-
 // Ensure the credentials exist
 if (!googleClientId || !googleClientSecret) {
   console.error("Missing Google OAuth credentials. Please check your .env.local file.");

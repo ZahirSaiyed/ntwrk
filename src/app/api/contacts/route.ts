@@ -41,19 +41,23 @@ export async function GET() {
     }
     
     // Transform contacts to match the expected format
-    const transformedContacts: Contact[] = contacts.map(contact => ({
-      id: contact.email, // Use email as ID
-      name: contact.name,
-      email: contact.email,
-      lastContacted: contact.lastContacted,
-      sentDates: contact.lastContactedRaw ? [contact.lastContactedRaw] : [], // Add sentDates array
-      interactions: contact.lastContactedRaw ? [{
-        date: contact.lastContactedRaw,
-        channel: 'email' as const,
-        type: 'sent' as const
-      }] : [],
-      provider: session.provider as 'google' | 'microsoft-entra-id'
-    }));
+    const transformedContacts: Contact[] = contacts.map(contact => {
+      const transformed = {
+        id: contact.email, // Use email as ID
+        name: contact.name,
+        email: contact.email,
+        lastContacted: contact.lastContacted,
+        sentDates: contact.lastContactedRaw ? [contact.lastContactedRaw] : [], // Add sentDates array
+        interactions: contact.lastContactedRaw ? [{
+          date: contact.lastContactedRaw,
+          channel: 'email' as const,
+          type: 'sent' as const
+        }] : [],
+        provider: session.provider as 'google' | 'microsoft-entra-id'
+      };
+      
+      return transformed;
+    });
     
     // Set cache control headers for stale-while-revalidate caching strategy
     const response = NextResponse.json({ contacts: transformedContacts });
