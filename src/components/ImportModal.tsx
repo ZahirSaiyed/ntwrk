@@ -37,6 +37,11 @@ interface DataSource {
   sampleData: string;
 }
 
+interface ValidationError {
+  row: number;
+  errors: string[];
+}
+
 const DATA_SOURCES: DataSource[] = [
   {
     id: 'template',
@@ -57,7 +62,7 @@ Jane Smith,jane@example.com,Tech Corp,2024-03-19`
     id: 'luma',
     name: 'Luma',
     icon: '🎫',
-    description: 'Import your event attendees directly from Luma',
+    description: 'Import event attendees from Luma',
     headerMappings: {
       name: ['name', 'attendee name', 'first name', 'last name'],
       email: ['email', 'attendee email'],
@@ -72,7 +77,7 @@ Jane Smith,jane@example.com,Tech Corp,2024-03-19`
     id: 'eventbrite',
     name: 'Eventbrite',
     icon: '🎪',
-    description: 'Import your Eventbrite attendee list seamlessly',
+    description: 'Import Eventbrite attendee list',
     headerMappings: {
       name: ['attendee name', 'first name', 'last name', 'attendee first name', 'attendee last name'],
       email: ['email', 'attendee email'],
@@ -87,7 +92,7 @@ Jane,Smith,jane@example.com,Tech Corp,2024-03-19`
     id: 'linkedin',
     name: 'LinkedIn',
     icon: '💼',
-    description: 'Import your LinkedIn connections export (.csv)',
+    description: 'Import LinkedIn connections',
     headerMappings: {
       name: ['First Name', 'Last Name'],
       email: ['Email Address'],
@@ -101,6 +106,102 @@ John,Doe,https://linkedin.com/in/johndoe,john@example.com,Acme Inc,CEO,2024-01-1
 Jane,Smith,https://linkedin.com/in/janesmith,jane@example.com,Tech Corp,CTO,2024-02-20`
   }
 ];
+
+// List of all possible main column keys and their CSV header variants (case-insensitive)
+const MAIN_COLUMN_KEYS = [
+  'name', 'full name', 'first name', 'last name',
+  'email', 'email address', 'attendee email',
+  'company', 'organization',
+  'industry',
+  'lastcontacted', 'last emailed', 'last emailed date', 'last email date', 'registration_date', 'order date', 'connected on'
+];
+
+// Canonical columns for preview and import
+const CANONICAL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'company', label: 'Company' },
+  { key: 'industry', label: 'Industry' },
+  { key: 'lastEmailed', label: 'Last Emailed Date' },
+];
+
+// Helper: get custom fields from preview data, excluding main columns and their variants
+function getCustomFieldColumns(data: CSVContact[]) {
+  const customKeys = new Set<string>();
+  data.forEach(row => {
+    Object.keys(row).forEach(key => {
+      if (!MAIN_COLUMN_KEYS.some(mainKey => mainKey.replace(/\s+/g, '').toLowerCase() === key.replace(/\s+/g, '').toLowerCase())) {
+        customKeys.add(key);
+      }
+    });
+  });
+  return Array.from(customKeys).map(key => ({ key, label: key }));
+}
+
+// Helper: get value for a column in a row, using source mapping
+function getCellValue(row: CSVContact, colKey: string, source: DataSource) {
+  // Name logic
+  if (colKey === 'name') {
+    if (source.id === 'linkedin') {
+      return `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || row['name'] || row['full name'] || row['Full Name'] || '-';
+    }
+    // Standard template: use 'name' or 'full name' (case-insensitive)
+    const nameField = Object.keys(row).find(k => k.toLowerCase() === 'name' || k.toLowerCase() === 'full name');
+    if (nameField && row[nameField]) return row[nameField];
+    // Fallback: try 'First Name' + 'Last Name'
+    if (row['First Name'] || row['Last Name']) return `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim();
+    // Fallback: any field containing 'name'
+    const anyName = Object.keys(row).find(k => k.toLowerCase().includes('name'));
+    if (anyName && row[anyName]) return row[anyName];
+    return '-';
+  }
+  // Email logic
+  if (colKey === 'email') {
+    return row['email'] || row['Email Address'] || row['attendee email'] || row['Attendee Email'] || '-';
+  }
+  // Company logic
+  if (colKey === 'company') {
+    return row['company'] || row['Company'] || row['organization'] || '-';
+  }
+  // Industry logic
+  if (colKey === 'industry') {
+    return row['industry'] || row['Industry'] || '-';
+  }
+  // Last Contacted logic
+  if (colKey === 'lastContacted') {
+    return row['lastContacted'] || row['last emailed'] || row['Last Emailed'] || row['registration_date'] || row['order date'] || row['Connected On'] || '-';
+  }
+  // Custom fields
+  return row[colKey] || '-';
+}
+
+// Helper: get all preview columns
+function getPreviewColumns(data: CSVContact[]) {
+  const customFields = getCustomFieldColumns(data);
+  return [...MAIN_COLUMN_KEYS.map(key => ({ key, label: key })), ...customFields];
+}
+
+// Transform a CSV row to canonical fields
+function transformRowToCanonical(row: CSVContact): Record<string, string> {
+  // Name: first + last, or just name
+  let name = '';
+  if (row['first name'] || row['First Name'] || row['last name'] || row['Last Name']) {
+    const first = row['first name'] || row['First Name'] || '';
+    const last = row['last name'] || row['Last Name'] || '';
+    name = `${first} ${last}`.trim();
+  } else if (row['name'] || row['Name'] || row['full name'] || row['Full Name']) {
+    name = row['name'] || row['Name'] || row['full name'] || row['Full Name'] || '';
+  }
+  // Email
+  const email = row['email'] || row['Email Address'] || row['attendee email'] || row['Attendee Email'] || '';
+  // Company
+  const company = row['company'] || row['Company'] || row['organization'] || '';
+  // Industry
+  const industry = row['industry'] || row['Industry'] || '';
+  // Last Emailed Date
+  const lastEmailed = row['last emailed'] || row['Last Emailed'] || row['last emailed date'] || row['last email date'] || row['registration_date'] || row['order date'] || row['Connected On'] || '';
+  return { name, email, company, industry, lastEmailed };
+}
 
 export default function ImportModal({ isOpen, onClose, onImportComplete }: ImportModalProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -271,63 +372,21 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
               .join('\n');
             setError(`CSV parsing errors:\n${errorMessages}`);
             setImporting(false);
-            setStep('preview'); // Go back to preview on error
+            setStep('preview');
             return;
           }
 
           const headers = Object.keys(results.data[0] || {});
-          const contacts = results.data.map(row => {
-            const values = Object.values(row).map(v => v?.toString() || '');
-            const mappedContact = mapHeadersToContact(headers, values);
-            
-            // Include any additional columns as custom fields
-            const customFields = headers.reduce((acc, header, index) => {
-              if (!['name', 'email', 'company', 'lastContacted'].includes(header.toLowerCase())) {
-                acc.push({
-                  id: `custom-${index}`,
-                  label: header,
-                  value: row[header]?.trim() || ''
-                });
-              }
-              return acc;
-            }, [] as { id: string; label: string; value: string }[]);
+          const contacts = results.data.map(transformRowToCanonical);
 
-            return {
-              ...mappedContact,
-              // Provide defaults for blank fields
-              name: mappedContact.name || 'Unnamed Contact',
-              company: mappedContact.company || '',
-              lastContacted: mappedContact.lastContacted || new Date().toISOString(),
-              customFields
-            };
-          });
-
-          // Only validate email format
-          const invalidContacts = contacts.filter(contact => {
-            // For LinkedIn imports, allow contacts without email
-            if (selectedSource.id === 'linkedin') {
-              // Only validate email format if email is present
-              return contact.email ? !contact.email.includes('@') : false;
-            }
-            // For other sources, require valid email
-            return !contact.email || !contact.email.includes('@');
-          });
-
-          if (invalidContacts.length > 0) {
-            setError(`Found ${invalidContacts.length} invalid email(s). Please check your CSV file.`);
-            setImporting(false);
-            setStep('preview'); // Go back to preview on error
-            return;
-          }
-
-          const validationErrors: { row: number; errors: string[] }[] = [];
-
-          contacts.forEach((contact, index) => {
-            const errors = validateContact(contact, selectedSource);
-            if (errors.length > 0) {
-              validationErrors.push({ row: index + 1, errors });
-            }
-          });
+          // Validate contacts before sending
+          const validationErrors = contacts.map((contact, index) => {
+            const errors: string[] = [];
+            if (!contact.email) errors.push('Email is required');
+            if (!contact.name || contact.name === 'Unnamed Contact') errors.push('Name is required');
+            if (contact.email && !contact.email.includes('@')) errors.push('Invalid email format');
+            return errors.length > 0 ? { row: index + 1, errors } : null;
+          }).filter((error): error is ValidationError => error !== null);
 
           if (validationErrors.length > 0) {
             const errorMessage = validationErrors
@@ -347,7 +406,7 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
             });
 
             if (!response.ok) {
-              const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+              const errorData = await response.json();
               throw new Error(errorData.error || `Server error: ${response.status}`);
             }
 
@@ -361,13 +420,13 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
               : 'Failed to import contacts. Please try again.'
             );
             setImporting(false);
-            setStep('preview'); // Go back to preview on error
+            setStep('preview');
           }
         },
         error: (error: Error) => {
           setError(`CSV reading error: ${error.message}`);
           setImporting(false);
-          setStep('preview'); // Go back to preview on error
+          setStep('preview');
         },
       });
     } catch (err) {
@@ -376,7 +435,7 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
         : 'Error reading file. Please try again.'
       );
       setImporting(false);
-      setStep('preview'); // Go back to preview on error
+      setStep('preview');
     }
   };
 
@@ -553,21 +612,19 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
               <table className="w-full">
                 <thead className="bg-[#F4F4FF]">
                   <tr>
-                    {getPreviewHeaders(selectedSource.id).map(header => (
-                      <th key={header.key} className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                        {header.label}
+                    {CANONICAL_COLUMNS.map(col => (
+                      <th key={col.key} className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                        {col.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {displayedContacts.slice(0, 5).map((row, index) => (
+                  {previewData.map((row, index) => (
                     <tr key={index} className="hover:bg-gray-50">
-                      {getPreviewHeaders(selectedSource.id).map(header => (
-                        <td key={header.key} className="px-6 py-4 text-sm text-gray-600">
-                          {header.key === 'name' && selectedSource.id === 'linkedin' 
-                            ? `${row['First Name']} ${row['Last Name']}`
-                            : row[header.key]}
+                      {CANONICAL_COLUMNS.map(col => (
+                        <td key={col.key} className="px-6 py-4 text-sm text-gray-600">
+                          {getCellValue(row, col.key, selectedSource)}
                         </td>
                       ))}
                     </tr>
@@ -641,14 +698,14 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
   };
 
   const renderSourceSelector = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 pt-2 px-2">
       <Tab.Group>
-        <Tab.List className="grid grid-cols-4 gap-3">
+        <Tab.List className="grid grid-cols-4 gap-2">
           {DATA_SOURCES.map((source) => (
             <Tab
               key={source.id}
               className={({ selected }) =>
-                `w-full rounded-xl p-4 text-left transition-all hover:bg-[#F4F4FF] focus:outline-none
+                `w-full rounded-lg p-2.5 text-left transition-all hover:bg-[#F4F4FF] focus:outline-none
                 ${selected 
                   ? 'bg-[#F4F4FF] ring-2 ring-[#1E1E3F] ring-opacity-60'
                   : 'bg-white border border-gray-200'
@@ -656,9 +713,9 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
               }
               onClick={() => setSelectedSource(source)}
             >
-              <div className="space-y-2">
-                <span className="text-2xl">{source.icon}</span>
-                <h3 className="font-medium text-[#1E1E3F]">{source.name}</h3>
+              <div className="space-y-1">
+                <span className="text-lg">{source.icon}</span>
+                <h3 className="font-medium text-[#1E1E3F] text-sm">{source.name}</h3>
                 <p className="text-xs text-gray-500 line-clamp-2">
                   {source.description}
                 </p>
@@ -668,10 +725,10 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
         </Tab.List>
       </Tab.Group>
 
-      <div className="bg-[#F4F4FF] rounded-xl p-6">
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-medium text-[#1E1E3F]">Expected Format</h3>
+      <div className="bg-[#F4F4FF] rounded-lg p-4">
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-medium text-[#1E1E3F] text-sm">Expected Format</h3>
             <button
               onClick={() => {
                 const blob = new Blob([selectedSource.sampleData], { type: 'text/csv' });
@@ -684,14 +741,14 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
               }}
-              className="px-3 py-1.5 bg-white text-[#1E1E3F] rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium border border-gray-200"
+              className="px-2 py-1 bg-white text-[#1E1E3F] rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1 text-xs font-medium border border-gray-200"
             >
               <span>Download Template</span>
               <span className="text-xs">↓</span>
             </button>
           </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="space-y-4">
+          <div className="bg-white p-3 rounded-lg border border-gray-200">
+            <div className="space-y-3">
               <div>
                 <div className="text-xs text-gray-500 mb-1">Headers (copy this line):</div>
                 <div className="text-xs font-mono bg-gray-50 p-2 rounded select-all">
@@ -734,7 +791,7 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-[#1E1E3F] hover:bg-white/50 transition-all cursor-pointer bg-white"
+          className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center hover:border-[#1E1E3F] hover:bg-white/50 transition-all cursor-pointer bg-white"
         >
           <input
             type="file"
@@ -743,17 +800,17 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
             className="hidden"
             id="csv-upload"
           />
-          <label htmlFor="csv-upload" className="space-y-4 block cursor-pointer">
-            <div className="w-16 h-16 mx-auto bg-[#F4F4FF] rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-[#1E1E3F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <label htmlFor="csv-upload" className="space-y-3 block cursor-pointer">
+            <div className="w-12 h-12 mx-auto bg-[#F4F4FF] rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-[#1E1E3F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
             </div>
             <div>
-              <p className="text-lg font-medium text-[#1E1E3F]">
+              <p className="text-base font-medium text-[#1E1E3F]">
                 Drop your {selectedSource.name} CSV file here
               </p>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 or <span className="text-[#1E1E3F] underline">browse</span> to upload
               </p>
             </div>
@@ -762,17 +819,6 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
       </div>
     </div>
   );
-
-  // First, add a function to get headers based on source type
-  const getPreviewHeaders = (sourceId: DataSource['id']) => {
-    // Standard preview headers for all sources
-    return [
-      { key: 'name', label: 'Name' },
-      { key: 'email', label: 'Email' },
-      { key: 'company', label: 'Company' },
-      { key: 'lastContacted', label: 'Last Emailed' }
-    ];
-  };
 
   return (
     <AnimatePresence>
@@ -787,10 +833,10 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.95 }}
-            className="bg-white rounded-xl p-6 w-full max-w-3xl mx-auto relative"
+            className="bg-white rounded-xl p-6 w-full max-w-3xl mx-auto relative max-h-[90vh] overflow-y-auto"
           >
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-[#1E1E3F]">Import Contacts</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-[#1E1E3F]">Import Contacts</h2>
               {step !== 'importing' && (
                 <button
                   onClick={onClose}
@@ -804,15 +850,17 @@ export default function ImportModal({ isOpen, onClose, onImportComplete }: Impor
             </div>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+              <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
-            {renderStep()}
+            <div className="max-h-[calc(90vh-120px)] overflow-y-auto">
+              {renderStep()}
+            </div>
 
             {step === 'preview' && (
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex justify-end gap-3 mt-4 sticky bottom-0 bg-white pt-2">
                 <button
                   onClick={() => {
                     setFile(null);

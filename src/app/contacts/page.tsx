@@ -363,11 +363,33 @@ function ContactsContent() {
       if (cachedData) {
         try {
           const parsedData = JSON.parse(cachedData);
-          // Validate that the cached data belongs to the current user
-          if (parsedData.userEmail !== session.user.email) {
-            // If the cached data belongs to a different user, clear it
+          
+          // Validate the structure of cached data
+          if (!parsedData || typeof parsedData !== 'object') {
+            console.warn('Invalid cached data structure, clearing cache');
+            localStorage.removeItem(storageKey);
+            throw new Error('Invalid cached data structure');
+          }
+
+          // If the cached data belongs to a different user, clear it
+          if (parsedData.userEmail && parsedData.userEmail !== session.user.email) {
+            console.warn('Cached data belongs to different user, clearing cache');
             localStorage.removeItem(storageKey);
             throw new Error('Invalid cached data');
+          }
+
+          // Handle both old and new data structures
+          let contacts = [];
+          if (Array.isArray(parsedData)) {
+            // Old format: direct array of contacts
+            contacts = parsedData;
+          } else if (Array.isArray(parsedData.contacts)) {
+            // New format: { contacts: [], lastUpdated: string }
+            contacts = parsedData.contacts;
+          } else {
+            console.warn('Invalid contacts data structure, clearing cache');
+            localStorage.removeItem(storageKey);
+            throw new Error('Invalid contacts data');
           }
 
           console.log('Loading contacts from cache');
@@ -381,13 +403,13 @@ function ContactsContent() {
           }, 500);
 
           return {
-            contacts: adaptContacts(parsedData.contacts || []),
+            contacts: adaptContacts(contacts),
             lastUpdated: parsedData.lastUpdated || new Date().toISOString()
           };
         } catch (error) {
           // If there's any error parsing the cache, clear it
-          localStorage.removeItem(storageKey);
           console.error('Error parsing cached data:', error);
+          localStorage.removeItem(storageKey);
         }
       }
 
@@ -402,11 +424,13 @@ function ContactsContent() {
       const now = new Date().toISOString();
       
       // Cache the data in localStorage with user email for validation
-      localStorage.setItem(storageKey, JSON.stringify({
-        ...data,
+      const dataToCache = {
+        contacts: data.contacts || [],
         lastUpdated: now,
-        userEmail: session.user.email // Add user email to cached data for validation
-      }));
+        userEmail: session.user.email
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(dataToCache));
       
       return {
         contacts: adaptContacts(data.contacts || []),
@@ -542,9 +566,9 @@ function ContactsContent() {
   }, [session?.user?.email]);
 
   // Filter out spam contacts for display
-  const displayContacts = contacts.filter((contact: Contact) => 
+  const displayContacts = contacts?.filter((contact: Contact) => 
     !(contact as ContactWithSpam).isSpam
-  );
+  ) || [];
 
   const availableColumns = useMemo(() => [
     {
@@ -602,17 +626,19 @@ function ContactsContent() {
         }
       }
     },
-    ...(contacts[0]?.customFields?.map((field: CustomField) => ({
-      key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
-      label: field.label,
-      description: `Custom field: ${field.label}`,
-      render: (contact: Contact) => {
-        const customField = contact.customFields?.find(f => 
-          f.label.toLowerCase().replace(/\s+/g, '_') === field.label.toLowerCase().replace(/\s+/g, '_')
-        );
-        return customField?.value || '-';
-      }
-    })) || [])
+    ...(contacts && contacts.length > 0 && contacts[0]?.customFields ? 
+      contacts[0].customFields.map((field: CustomField) => ({
+        key: field.label.toLowerCase().replace(/\s+/g, '_') as ColumnKey,
+        label: field.label,
+        description: `Custom field: ${field.label}`,
+        render: (contact: Contact) => {
+          const customField = contact.customFields?.find(f => 
+            f.label.toLowerCase().replace(/\s+/g, '_') === field.label.toLowerCase().replace(/\s+/g, '_')
+          );
+          return customField?.value || '-';
+        }
+      })) : []
+    )
   ], [contacts]);
 
   // Replace this useEffect with direct assignment
@@ -889,21 +915,19 @@ function ContactsContent() {
   });
 
   const handleImportComplete = useCallback((newContacts: Contact[]) => {
-    queryClient.setQueryData(['sentRecipients', session?.user?.email], (oldData: Contact[] | undefined) => {
-      if (!oldData) return newContacts;
-      
-      // Filter out any contacts that are marked as spam
-      const nonSpamContacts = oldData.filter(contact => !(contact as ContactWithSpam).isSpam);
+    queryClient.setQueryData(['sentRecipients', session?.user?.email], (oldData: any) => {
+      // Get existing contacts from the query data
+      const existingContacts = oldData?.contacts || [];
       
       // Create a Set of existing email addresses (case-insensitive)
-      const existingEmails = new Set(nonSpamContacts.map(c => c.email.toLowerCase()));
+      const existingEmails = new Set(existingContacts.map((c: Contact) => c.email.toLowerCase()));
       
       // Only add new contacts that don't exist in the current list
       const uniqueNewContacts = newContacts.filter(
         contact => !existingEmails.has(contact.email.toLowerCase())
       );
       
-      const updatedContacts = [...nonSpamContacts, ...uniqueNewContacts];
+      const updatedContacts = [...existingContacts, ...uniqueNewContacts];
       
       // Update localStorage with the new data
       const storageKey = getContactsStorageKey(session?.user?.email);
@@ -913,23 +937,8 @@ function ContactsContent() {
         userEmail: session?.user?.email
       }));
       
-      // Always show cleanup assistant after import if there are new contacts
+      // Show success message
       if (uniqueNewContacts.length > 0) {
-        // Clear the "just closed" flag if it exists
-        localStorage.removeItem('cleanup_just_closed');
-        
-        // Directly show cleanup assistant without relying on the useEffect
-        setShowCleanupAssistant(true);
-        
-        // Force the cleanup assistant to show even after refresh,
-        // but only if new contacts were added
-        if (session?.user?.email) {
-          // Set flags for consistent behavior
-          localStorage.removeItem(`cleanup-shown-in-session-${session.user.email}`);
-          localStorage.setItem('force_show_cleanup', 'true');
-          localStorage.setItem('sentRecipients_loaded_from_cache', 'false');
-        }
-        
         toast.success(`Imported ${uniqueNewContacts.length} new contacts`, {
           duration: 3000,
           style: { background: '#F4F4FF', color: '#1E1E3F' }
@@ -946,7 +955,10 @@ function ContactsContent() {
         });
       }
       
-      return updatedContacts;
+      return {
+        contacts: updatedContacts,
+        lastUpdated: new Date().toISOString()
+      };
     });
   }, [queryClient, session?.user?.email]);
 
