@@ -37,6 +37,7 @@
     "openai": "^4.100.0",
     "p-limit": "^6.2.0",
     "papaparse": "^5.4.1",
+    "posthog-js": "^1.252.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.5.2",
