@@ -7,7 +7,9 @@
   --primary-light: #F4F4FF;
 }
 
-body {
+html, body {
+  background: linear-gradient(135deg, #181c2a 0%, #232946 100%) !important;
+  min-height: 100vh;
   color: #1E1E3F;
 }
 
